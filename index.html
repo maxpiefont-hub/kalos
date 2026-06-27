@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Kalos</title>
+<meta name="theme-color" content="#0e5fae">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kalos">
+<link rel="apple-touch-icon" href="icon-192.png?v=8">
+<link rel="icon" type="image/png" href="icon-192.png?v=8">
+<link rel="shortcut icon" type="image/png" href="icon-192.png?v=8">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --accent:#0e5fae; --accent-d:#0a4683; --accent-l:#e8f1fb;
+    --bg:#f5f8fc; --card:#ffffff; --ink:#16263a; --grey:#5b6b7d; --line:#dde6f0;
+    --gold:#c08a2e; --danger:#b3402f;
+    --sante:#2e9e6b; --esprit:#3b7dd8; --culture:#9b59b6; --art:#e08a2b; --travail:#475569; --relations:#d05a7e;
+    --safe-top:env(safe-area-inset-top,0px); --safe-bot:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
+  a{color:var(--accent)}
+  .app{display:flex;min-height:100vh}
+  .side{width:226px;background:linear-gradient(180deg,var(--accent-d),var(--accent));color:#fff;padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+  .brand{font-size:28px;font-weight:800;letter-spacing:1px;margin:4px 6px 0}
+  .brand small{display:block;font-size:11px;font-weight:400;opacity:.8;letter-spacing:2px}
+  .nav{margin-top:14px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+  .nav button{background:transparent;border:0;color:#fff;text-align:left;padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;opacity:.85;display:flex;align-items:center;gap:9px;transition:.15s;white-space:nowrap}
+  .nav button:hover{background:rgba(255,255,255,.12);opacity:1}
+  .nav button.active{background:#fff;color:var(--accent-d);opacity:1;font-weight:600}
+  .nav .ic{width:18px;text-align:center}
+  .lvlbox{margin-top:auto;background:rgba(255,255,255,.12);border-radius:11px;padding:12px}
+  .lvlbox b{font-size:20px}
+  .xpbar{height:7px;background:rgba(255,255,255,.25);border-radius:6px;margin-top:6px;overflow:hidden}
+  .xpbar>i{display:block;height:100%;background:#ffd98a;width:0%}
+  .main{flex:1;padding:24px 30px;max-width:1000px;width:100%}
+  h1.page{font-size:24px;margin:0 0 4px;color:var(--accent-d)}
+  .sub{color:var(--grey);margin:0 0 18px;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  .card h2{margin:0 0 12px;font-size:17px}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .row>*{flex:1;min-width:160px}
+  label{display:block;font-size:13px;color:var(--grey);margin:10px 0 4px;font-weight:600}
+  input,select,textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}
+  textarea{resize:vertical;min-height:80px}
+  button.btn{background:var(--accent);color:#fff;border:0;padding:12px 16px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+  button.btn:hover{background:var(--accent-d)}
+  button.ghost{background:#fff;color:var(--accent);border:1px solid var(--accent)}
+  button.ghost:hover{background:var(--accent-l)}
+  button.sm{padding:7px 12px;font-size:13px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;color:#fff;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+  .muted{color:var(--grey)}
+  .chat{display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto;padding:4px}
+  .msg{max-width:85%;padding:10px 13px;border-radius:13px;white-space:pre-wrap;word-wrap:break-word}
+  .msg.ai{background:var(--accent-l);align-self:flex-start;border-bottom-left-radius:3px}
+  .msg.me{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:3px}
+  .chatbar{display:flex;gap:8px;margin-top:12px;align-items:flex-end}
+  .chatbar textarea{min-height:46px}
+  .iconbtn{background:var(--accent-l);border:1px solid var(--line);border-radius:10px;padding:0 13px;height:46px;font-size:18px;cursor:pointer}
+  .thumb{max-width:120px;max-height:120px;border-radius:10px;border:1px solid var(--line);margin-top:6px;display:block}
+  .imgprev{display:flex;align-items:center;gap:8px;background:var(--accent-l);border-radius:10px;padding:6px;margin-bottom:8px;font-size:13px}
+  .imgprev img{height:40px;border-radius:6px}
+  .quest{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px}
+  .quest.done{opacity:.55;background:#f3f6f3}
+  .quest .q-x{margin-left:auto;font-weight:700;color:var(--gold);white-space:nowrap}
+  .quest input[type=checkbox]{width:22px;height:22px;flex:none}
+  .pbar{margin-bottom:11px}
+  .pbar .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
+  .pbar .track{height:9px;background:#eceeec;border-radius:6px;overflow:hidden}
+  .pbar .track>i{display:block;height:100%;width:0}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--grey);font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  .stat{display:flex;gap:14px;flex-wrap:wrap}
+  .stat .box{background:var(--accent-l);border-radius:11px;padding:14px 16px;flex:1;min-width:130px}
+  .stat .box b{font-size:21px;display:block;color:var(--accent-d)}
+  .stat .box span{font-size:12px;color:var(--grey)}
+  .banner{background:#fff7e6;border:1px solid #f0d896;border-radius:11px;padding:12px 14px;font-size:13px;margin-bottom:16px;color:#7a5c1a}
+  .toast{position:fixed;left:50%;bottom:calc(22px + var(--safe-bot));transform:translateX(-50%);background:var(--accent-d);color:#fff;padding:11px 18px;border-radius:24px;opacity:0;transition:.3s;pointer-events:none;z-index:50;box-shadow:0 6px 18px rgba(0,0,0,.2);max-width:90%;text-align:center}
+  .toast.show{opacity:1}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .formatted h3{color:var(--accent-d);margin:14px 0 4px;font-size:16px}
+  .formatted{white-space:pre-wrap;line-height:1.6}
+  .bottomnav{display:none}
+  .moodb.active{background:var(--accent-l);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .hub-cta{display:block;width:100%;text-align:center}
+  .shortcuts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .shortcuts button{background:var(--accent-l);border:1px solid var(--line);border-radius:12px;padding:12px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--ink)}
+  .shortcuts .ic{font-size:20px}
+  #plusMenu{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;z-index:60}
+  #plusMenu .plus-sheet{background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:16px;max-height:80vh;overflow:auto}
+  #plusMenu .plus-sheet h3{margin:0 0 10px}
+  #plusMenu .plus-sheet button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:13px 6px;font-size:15px;cursor:pointer;color:var(--ink)}
+  #plusMenu .plus-sheet .closep{text-align:center;color:var(--accent);font-weight:600;border-bottom:0;margin-top:6px}
+  @media(max-width:780px){
+    .nav{display:none!important}
+    .bottomnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);padding:6px 2px calc(6px + var(--safe-bot));justify-content:space-around;box-shadow:0 -2px 10px rgba(0,0,0,.06)}
+    .bottomnav button{flex:1;background:none;border:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--grey);padding:3px;cursor:pointer}
+    .bottomnav button.active{color:var(--accent);font-weight:700}
+    .bottomnav .ic{font-size:20px}
+    .main{padding-bottom:82px}
+  }
+  @media(max-width:780px){
+    .app{flex-direction:column}
+    .side{width:auto;height:auto;position:sticky;top:0;z-index:20;flex-direction:row;align-items:center;gap:10px;padding:calc(8px + var(--safe-top)) 10px 8px;flex-wrap:nowrap;overflow:hidden}
+    .brand{font-size:20px;margin:0}.brand small{display:none}
+    .nav{margin-top:0;flex-direction:row;gap:4px;overflow-x:auto;flex:1;padding-bottom:2px}
+    .nav button{padding:8px 11px;font-size:13px;flex:none}
+    .nav button span.lbl{display:none}
+    .nav button.active span.lbl{display:inline}
+    .nav .ic{font-size:18px;width:auto}
+    .lvlbox{display:none}
+    .main{padding:16px 14px 40px}
+    .row>*{min-width:100%}
+    h1.page{font-size:21px}
+    .msg{max-width:90%}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">KALOS<small>καλός · le beau et le bon</small></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="lvlbox">
+      <span style="font-size:12px;opacity:.85">Niveau</span>
+      <b id="lvlNum">1</b>
+      <div class="xpbar"><i id="lvlBar"></i></div>
+      <span id="lvlXp" style="font-size:11px;opacity:.85"></span>
+    </div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<nav class="bottomnav" id="bnav"></nav>
+<div id="plusMenu"></div>
+<div id="authOverlay" style="position:fixed;inset:0;background:linear-gradient(180deg,#0a4683,#0e5fae);display:none;align-items:center;justify-content:center;z-index:100;padding:20px">
+  <div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:24px;box-shadow:0 12px 44px rgba(0,0,0,.35)">
+    <div style="font-size:30px;font-weight:800;color:var(--accent);text-align:center;letter-spacing:1px">KALOS</div>
+    <div style="text-align:center;color:var(--grey);font-size:11px;letter-spacing:2px;margin-bottom:16px">καλός · le beau et le bon</div>
+    <div id="authMsg" style="font-size:13px;margin-bottom:6px;color:var(--accent-d)"></div>
+    <label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="ton@email.com">
+    <label>Mot de passe</label><input id="authPass" type="password" autocomplete="current-password" placeholder="6 caractères minimum">
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn" id="authLogin" style="flex:1">Se connecter</button>
+      <button class="ghost" id="authSignup" style="flex:1">Créer un compte</button>
+    </div>
+    <p class="muted" style="font-size:11px;margin-top:14px;text-align:center">Tes données te suivent sur tous tes appareils.</p>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
+const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
+const MODELS={
+  google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
+  openai:[{id:"gpt-5.4-nano",name:"GPT-5.4 Nano (très bon marché)",in:0.20,out:1.25},{id:"gpt-5.4-mini",name:"GPT-5.4 Mini",in:0.75,out:4.50}],
+  anthropic:[{id:"claude-haiku-4-5-20251001",name:"Claude Haiku 4.5 (coaching)",in:1.00,out:5.00},{id:"claude-sonnet-4-6",name:"Claude Sonnet 4.6 (puissant)",in:3.00,out:15.00}],
+};
+const DEFAULTS={
+  settings:{provider:"google",apiKey:"",cheap:"gemini-2.5-flash-lite",power:"gemini-2.5-flash",eur:0.92,monthly:30},
+  profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null},
+  nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null},
+  planning:{data:null,updated:null},
+  checkin:{date:"",mood:""},
+  quests:{date:"",items:[]},progress:{xp:0,pillars:{sante:0,esprit:0,culture:0,art:0,travail:0,relations:0}},
+  coffre:{balance:0,lastMonth:"",rewards:[]},tracking:[],costs:[],chat:[],
+};
+const K=(k)=>"kalos_"+k;
+function load(k){try{const v=localStorage.getItem(K(k));return v?JSON.parse(v):structuredClone(DEFAULTS[k]);}catch(e){return structuredClone(DEFAULTS[k]);}}
+function save(k,v){try{localStorage.setItem(K(k),JSON.stringify(v));}catch(e){toast("Stockage plein — exporte/efface des photos.");}cloudSave();}
+let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat");
+const $=(s,el=document)=>el.querySelector(s);
+const esc=(t)=>(t||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2600);}
+const todayStr=()=>new Date().toISOString().slice(0,10);
+const monthStr=()=>new Date().toISOString().slice(0,7);
+function saison(){const m=new Date().getMonth()+1;if(m>=3&&m<=5)return"printemps";if(m>=6&&m<=8)return"été";if(m>=9&&m<=11)return"automne";return"hiver";}
+let ctxExtra="";
+let weatherData={air:null,mer:null,mont:null};
+function getCoords(){return new Promise(res=>{const fb={lat:41.92,lon:8.74};try{if(!navigator.geolocation)return res(fb);navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lon:p.coords.longitude}),()=>res(fb),{timeout:6000,maximumAge:3600000});}catch(e){res(fb);}});}
+async function loadContext(){
+  try{
+    const c=await getCoords();
+    const j=(u)=>fetch(u).then(r=>r.json());
+    const res=await Promise.allSettled([
+      j("https://api.open-meteo.com/v1/forecast?latitude="+c.lat+"&longitude="+c.lon+"&current_weather=true"),
+      j("https://marine-api.open-meteo.com/v1/marine?latitude="+c.lat+"&longitude="+c.lon+"&current=sea_surface_temperature"),
+      j("https://api.open-meteo.com/v1/forecast?latitude="+c.lat+"&longitude="+c.lon+"&elevation=2000&current_weather=true")
+    ]);
+    const air=res[0],sea=res[1],mont=res[2];
+    weatherData.air=(air.status==="fulfilled"&&air.value.current_weather)?Math.round(air.value.current_weather.temperature):null;
+    weatherData.mer=(sea.status==="fulfilled"&&sea.value&&sea.value.current&&sea.value.current.sea_surface_temperature!=null)?Math.round(sea.value.current.sea_surface_temperature):null;
+    weatherData.mont=(mont.status==="fulfilled"&&mont.value.current_weather)?Math.round(mont.value.current_weather.temperature):null;
+    ctxExtra=" Météo (position de l'utilisateur) :"+(weatherData.air!=null?(" air "+weatherData.air+"°C,"):"")+(weatherData.mer!=null?(" mer "+weatherData.mer+"°C,"):"")+(weatherData.mont!=null?(" en altitude (~2000 m) "+weatherData.mont+"°C,"):"");
+    ctxExtra=ctxExtra.replace(/,$/,".").replace(/ :$/,"");
+    if(typeof current!=="undefined"&&current==="accueil"&&document.getElementById("main"))render();
+  }catch(e){ctxExtra="";}
+}
+function renderWeather(){
+  const w=weatherData;if(w.air==null&&w.mer==null&&w.mont==null)return "";
+  return `<div class="card"><h2>🌤️ Météo — en direct</h2><div class="stat">${w.air!=null?`<div class="box"><b>${w.air}°C</b><span>🌡️ Air</span></div>`:""}${w.mer!=null?`<div class="box"><b>${w.mer}°C</b><span>🌊 Mer (nage)</span></div>`:""}${w.mont!=null?`<div class="box"><b>${w.mont}°C</b><span>⛰️ Altitude (rando)</span></div>`:""}</div><p class="muted" style="margin:10px 0 0;font-size:12px">D'après ta position. Kalos adapte selon l'activité : la mer pour la nage, l'altitude pour la rando.</p></div>`;
+}
+function nowContext(){
+  const d=new Date();
+  const date=d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  const heure=d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  const jours=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  let plan="";
+  if(planning&&planning.data&&planning.data.jours){
+    const jd=planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===jours[d.getDay()].toLowerCase());
+    if(jd&&jd.items&&jd.items.length){
+      const items=jd.items.map(it=>(it.h||"")+" "+(it.titre||"")).join(" · ");
+      const next=jd.items.find(it=>(it.h||"")>=heure);
+      plan="\nPlanning d'aujourd'hui : "+items+(next?(". Prochaine action prévue : "+(next.h||"")+" "+(next.titre||"")+"."):". Journée presque terminée.");
+    }
+  }
+  return "CONTEXTE (tu connais déjà ces infos, ne les redemande JAMAIS) : nous sommes le "+date+", il est "+heure+", saison "+saison()+"."+ctxExtra+plan;
+}
+const USD=(n)=>"$"+n.toFixed(n<0.01?5:4);
+const EUR=(n)=>(n*S.eur).toFixed(n*S.eur<0.01?5:4)+" €";
+function fmt(t){let h=esc(t);h=h.replace(/^#{1,3} (.*)$/gm,"<h3>$1</h3>");h=h.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");return h;}
+function levelInfo(){return{lvl:1+Math.floor(progress.xp/100),into:progress.xp%100,need:100};}
+function refreshLevel(){const{lvl,into,need}=levelInfo();$("#lvlNum").textContent=lvl;$("#lvlBar").style.width=(into/need*100)+"%";$("#lvlXp").textContent=into+" / "+need+" XP";}
+function addXp(p,a){progress.xp=Math.max(0,progress.xp+a);if(p&&progress.pillars[p]!=null)progress.pillars[p]=Math.max(0,progress.pillars[p]+a);save("progress",progress);refreshLevel();}
+function modelMeta(id){for(const p in MODELS){const m=MODELS[p].find(x=>x.id===id);if(m)return{...m,provider:p};}return{id,name:id,in:0,out:0,provider:S.provider};}
+function compressImage(file,maxDim=1024,q=0.82){return new Promise((res,rej)=>{const rd=new FileReader();rd.onload=()=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;const s=Math.min(1,maxDim/Math.max(w,h));const cw=Math.round(w*s),ch=Math.round(h*s);const cv=document.createElement("canvas");cv.width=cw;cv.height=ch;cv.getContext("2d").drawImage(img,0,0,cw,ch);const dataUrl=cv.toDataURL("image/jpeg",q);res({dataUrl,b64:dataUrl.split(",")[1]});};img.onerror=rej;img.src=rd.result;};rd.onerror=rej;rd.readAsDataURL(file);});}
+function pickImage(maxDim=1024){return new Promise((res)=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=async()=>{const f=inp.files[0];if(!f){res(null);return;}try{res(await compressImage(f,maxDim));}catch(e){toast("Image illisible");res(null);}};inp.click();});}
+function pickImages(maxDim=1024){return new Promise((res)=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;inp.onchange=async()=>{const fs=[...inp.files];if(!fs.length){res([]);return;}try{const out=[];for(const f of fs)out.push(await compressImage(f,maxDim));res(out);}catch(e){toast("Image illisible");res([]);}};inp.click();});}
+
+async function callAI({system,messages,modelId,label,maxTokens=3000}){
+  if(!S.apiKey)throw new Error("Aucune clé API. Va dans Réglages.");
+  system=(nowContext()+"\n\n")+(system||"");
+  const meta=modelMeta(modelId),prov=meta.provider;let url,opts,parse;
+  if(prov==="anthropic"){
+    url="https://api.anthropic.com/v1/messages";
+    const mm=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);return ims.length?{role:m.role,content:[{type:"text",text:m.text||""},...ims.map(b=>({type:"image",source:{type:"base64",media_type:"image/jpeg",data:b}}))]}:{role:m.role,content:m.text};});
+    opts={method:"POST",headers:{"content-type":"application/json","x-api-key":S.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:modelId,max_tokens:maxTokens,system,messages:mm})};
+    parse=(d)=>({text:(d.content||[]).map(c=>c.text).join("\n"),inTok:d.usage?.input_tokens||0,outTok:d.usage?.output_tokens||0});
+  }else if(prov==="openai"){
+    url="https://api.openai.com/v1/chat/completions";
+    const mm=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);return ims.length?{role:m.role,content:[{type:"text",text:m.text||""},...ims.map(b=>({type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b}}))]}:{role:m.role,content:m.text};});
+    opts={method:"POST",headers:{"content-type":"application/json","Authorization":"Bearer "+S.apiKey},body:JSON.stringify({model:modelId,messages:[{role:"system",content:system},...mm],max_completion_tokens:maxTokens})};
+    parse=(d)=>({text:d.choices?.[0]?.message?.content||"",inTok:d.usage?.prompt_tokens||0,outTok:d.usage?.completion_tokens||0});
+  }else{
+    url="https://generativelanguage.googleapis.com/v1beta/models/"+modelId+":generateContent?key="+encodeURIComponent(S.apiKey);
+    const contents=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);const parts=[{text:m.text||""}];ims.forEach(b=>parts.push({inline_data:{mime_type:"image/jpeg",data:b}}));return{role:m.role==="assistant"?"model":"user",parts};});
+    opts={method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:maxTokens}})};
+    parse=(d)=>({text:(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("\n"),inTok:d.usageMetadata?.promptTokenCount||0,outTok:d.usageMetadata?.candidatesTokenCount||0});
+  }
+  const res=await fetch(url,opts);const data=await res.json();
+  if(!res.ok)throw new Error("Erreur API ("+res.status+") : "+(data.error?.message||JSON.stringify(data).slice(0,180)));
+  const out=parse(data);
+  costs.push({ts:Date.now(),label:label||"chat",provider:prov,model:modelId,inTok:out.inTok,outTok:out.outTok,usd:out.inTok/1e6*meta.in+out.outTok/1e6*meta.out});
+  save("costs",costs);return out;
+}
+
+const PAGES=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"decouverte",ic:"🧭",label:"Découverte"},{id:"profil",ic:"🪪",label:"Profil"},{id:"salle",ic:"🏋️",label:"Salle"},{id:"nutrition",ic:"🍽️",label:"Nutrition"},{id:"programme",ic:"📋",label:"Programme"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"quetes",ic:"⚔️",label:"Quêtes"},{id:"progression",ic:"📈",label:"Progrès"},{id:"coffre",ic:"🪙",label:"Coffre"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"couts",ic:"💸",label:"Coûts"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
+let current="accueil";
+const CORE=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"__plus",ic:"⋯",label:"Plus"}];
+function navTo(id){current=id;buildNav();render();window.scrollTo(0,0);}
+function buildNav(){
+  const nav=$("#nav");if(nav){nav.innerHTML="";PAGES.forEach(p=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${p.ic}</span><span class="lbl">${p.label}</span>`;b.className=(p.id===current?"active":"");b.onclick=()=>navTo(p.id);nav.appendChild(b);});}
+  const bn=$("#bnav");if(bn){bn.innerHTML="";CORE.forEach(c=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${c.ic}</span><span>${c.label}</span>`;const act=(c.id===current)||(c.id==="__plus"&&!CORE.some(x=>x.id===current));b.className=act?"active":"";b.onclick=()=>{if(c.id==="__plus")openPlus();else navTo(c.id);};bn.appendChild(b);});}
+}
+function openPlus(){const m=$("#plusMenu");if(!m)return;const core=["accueil","calendrier","decouverte","suivi"];m.innerHTML=`<div class="plus-sheet"><h3>Plus</h3>${PAGES.filter(p=>!core.includes(p.id)).map(p=>`<button data-go="${p.id}">${p.ic} ${p.label}</button>`).join("")}<button class="closep" data-close="1">Fermer</button></div>`;m.style.display="flex";m.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{m.style.display="none";navTo(b.dataset.go);});m.querySelector("[data-close]").onclick=()=>m.style.display="none";m.onclick=(e)=>{if(e.target===m)m.style.display="none";};}
+function render(){({accueil:rAccueil,demarrage:rOnboarding,decouverte:rDecouverte,profil:rProfil,salle:rSalle,nutrition:rNutrition,programme:rProgramme,calendrier:rCalendrier,quetes:rQuetes,progression:rProgression,coffre:rCoffre,suivi:rSuivi,couts:rCouts,reglages:rReglages}[current])();}
+const keyBanner=()=>S.apiKey?"":`<div class="banner">⚠️ Aucune clé API. Va dans <b>⚙️ Réglages</b> pour brancher l'IA.</div>`;
+
+function rAccueil(){
+  const {lvl,into,need}=levelInfo();
+  const todayQ=quests.date===todayStr()?quests.items:[];
+  const doneQ=todayQ.filter(q=>q.done).length;
+  const jours=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  const todayName=jours[new Date().getDay()];
+  let todayPlan=[];
+  if(planning.data&&planning.data.jours){const jd=planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===todayName.toLowerCase());if(jd)todayPlan=jd.items||[];}
+  const lastT=tracking[0]||{};
+  const ci=(checkin.date===todayStr())?checkin.mood:"";
+  let next;
+  if(!S.apiKey) next={t:"Branche l'IA pour démarrer",go:"reglages"};
+  else if(!profile.text) next={t:"Créer mon plan (3 min)",go:"demarrage"};
+  else if(!program.text) next={t:"Génère ton programme de vie",go:"programme"};
+  else if(!planning.data) next={t:"Génère ta semaine (planning)",go:"calendrier"};
+  else next={t:"Fais tes quêtes du jour",go:"quetes"};
+  $("#main").innerHTML=`<h1 class="page">🏠 Bonjour</h1><p class="sub">L'essentiel en un coup d'œil. Avance d'une étape à la fois — tout est relié.</p>${keyBanner()}
+   <div class="card" style="border-left:4px solid var(--accent)"><div style="font-size:13px;color:var(--grey)">Ta prochaine étape</div><div style="font-size:18px;font-weight:700;margin:4px 0 12px">${esc(next.t)}</div><button class="btn hub-cta" data-nav="${next.go}">Continuer →</button></div>
+   <div class="card"><div class="stat"><div class="box" data-nav="progression" style="cursor:pointer"><b>Niv. ${lvl}</b><span>${into}/${need} XP</span></div><div class="box" data-nav="suivi" style="cursor:pointer"><b>${lastT.poids?esc(lastT.poids)+" kg":"—"}</b><span>dernier poids</span></div><div class="box" data-nav="suivi" style="cursor:pointer"><b>${lastT.taille?esc(lastT.taille)+" cm":"—"}</b><span>tour de taille</span></div></div></div>
+   ${renderWeather()}
+   <div class="card"><h2>Ton check-in du jour</h2>
+     <div style="font-size:13px;color:var(--grey);margin:-4px 0 8px">Comment te sens-tu ?</div>
+     <div style="display:flex;gap:8px">
+       <button class="ghost sm moodb ${ci==="bof"?"active":""}" data-mood="bof" style="flex:1">😔 Bof</button>
+       <button class="ghost sm moodb ${ci==="moyen"?"active":""}" data-mood="moyen" style="flex:1">😐 Moyen</button>
+       <button class="ghost sm moodb ${ci==="bien"?"active":""}" data-mood="bien" style="flex:1">🙂 Bien</button>
+     </div>
+     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+       <button class="ghost sm" data-nav="calendrier">🔧 Un imprévu / moins de temps</button>
+     </div>
+     ${ci?`<p class="muted" style="margin:10px 0 0;font-size:12px">Check-in noté${ci==="bof"?" — pense à alléger ta journée (bouton imprévu).":ci==="bien"?" — profites-en pour avancer un peu plus !":"."}</p>`:""}
+   </div>
+   <div class="card"><h2>📅 Aujourd'hui — ${todayName}</h2>
+     ${todayPlan.length?todayPlan.slice(0,6).map(it=>`<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)"><b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b><span>${esc(it.titre||"")}</span></div>`).join(""):'<span class="muted">Pas encore de planning généré.</span>'}
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Voir le planning</button><button class="ghost sm" data-nav="quetes">Quêtes du jour ${todayQ.length?("("+doneQ+"/"+todayQ.length+")"):""}</button></div>
+   </div>
+   <div class="card"><h2>Comment Kalos t'aide</h2>
+     <button class="ghost sm" id="howBtn">Voir le pourquoi (fondé sur la psychologie)</button>
+     <div id="howBox" class="formatted" style="display:none;margin-top:10px;font-size:13.5px">
+       <b>1. Une seule étape à la fois.</b> On s'engage mieux quand l'action suivante est claire et petite — l'effet des « petites victoires » sur la motivation (Amabile & Kramer, 2011).<br><br>
+       <b>2. Quand & où, pas seulement quoi.</b> Décider de l'heure et du lieu d'une action augmente fortement la probabilité de la faire (« intentions d'implémentation », Gollwitzer, 1999) — c'est tout le rôle du Planning.<br><br>
+       <b>3. Une motivation qui tient.</b> On tient sur la durée quand on se sent autonome, compétent et relié à ses valeurs (théorie de l'autodétermination, Deci & Ryan). Kalos te laisse choisir, te fait progresser par paliers (XP), et relie tout à ta vision (kalokagathia).<br><br>
+       <b>4. La régularité prime sur la perfection.</b> Une habitude met ~66 jours en moyenne à s'ancrer, avec de la souplesse (Lally et al., 2010).
+     </div>
+   </div>
+   <div class="card"><h2>Tout est relié</h2><div class="shortcuts">
+     <button data-nav="decouverte"><span class="ic">🧭</span>Coach</button>
+     <button data-nav="profil"><span class="ic">🪪</span>Profil</button>
+     <button data-nav="salle"><span class="ic">🏋️</span>Salle</button>
+     <button data-nav="nutrition"><span class="ic">🍽️</span>Nutrition</button>
+     <button data-nav="programme"><span class="ic">📋</span>Programme</button>
+     <button data-nav="calendrier"><span class="ic">📅</span>Planning</button>
+     <button data-nav="quetes"><span class="ic">⚔️</span>Quêtes</button>
+     <button data-nav="progression"><span class="ic">📈</span>Progrès</button>
+     <button data-nav="couts"><span class="ic">💸</span>Coûts</button>
+   </div></div>`;
+  const hb=$("#howBtn");if(hb)hb.onclick=()=>{const x=$("#howBox");x.style.display=x.style.display==="none"?"block":"none";};
+  document.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{checkin={date:todayStr(),mood:b.dataset.mood};save("checkin",checkin);toast("Check-in noté ✓");render();});
+}
+
+function rOnboarding(){
+  const jours=["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+  $("#main").innerHTML=`<h1 class="page">✨ Créons ton plan</h1><p class="sub">Quelques réponses rapides — Kalos prépare un plan personnalisé et tes actions du jour. Tu règles tes dispos une seule fois.</p>${keyBanner()}
+   <div class="card">
+     <label>Ton objectif principal</label>
+     <select id="obObj"><option>Perdre du gras et prendre du muscle</option><option>Perdre du gras</option><option>Prendre du muscle</option><option>Plus d'énergie et de forme</option><option>Être plus discipliné et équilibré</option></select>
+     <label>Ton niveau actuel</label>
+     <select id="obNiv"><option>Débutant</option><option selected>Intermédiaire</option><option>Avancé</option></select>
+     <label>Quels jours peux-tu bouger ? (tes dispos)</label>
+     <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:4px">${jours.map(j=>`<label style="display:flex;align-items:center;gap:5px;font-weight:400;color:var(--ink);margin:0"><input type="checkbox" class="obJour" value="${j}" style="width:18px;height:18px"> ${j}</label>`).join("")}</div>
+     <label>Temps type par séance</label>
+     <select id="obTemps"><option>15 min</option><option selected>30 min</option><option>45 min</option><option>1 h</option></select>
+     <label>Contraintes santé (asthme, dos, genoux…)</label>
+     <input id="obSante" placeholder="ex. asthme, douleurs au dos">
+     <label>Ce que tu aimes / n'aimes pas</label>
+     <textarea id="obGouts" placeholder="ex. j'aime la marche et le poisson, je déteste courir"></textarea>
+     <label>Ce qui t'a bloqué avant</label>
+     <input id="obBloc" placeholder="ex. je commençais trop fort puis j'abandonnais">
+     <div style="margin-top:14px"><button class="btn" id="obGo" style="width:100%">✨ Créer mon plan</button></div>
+     <p class="muted" id="obStatus" style="text-align:center;margin-top:10px;font-size:13px"></p>
+   </div>
+   <div class="card"><p class="muted" style="margin:0;font-size:13px">Tu pourras tout affiner ensuite. Kalos apprendra à mieux te connaître au fil du temps (tes goûts, ce qui marche pour toi) pour adapter tes journées automatiquement.</p></div>`;
+  $("#obGo").onclick=creerMonPlan;
+}
+async function creerMonPlan(){
+  if(!S.apiKey)return toast("Branche ta clé (Réglages).");
+  const obj=$("#obObj").value,niv=$("#obNiv").value,temps=$("#obTemps").value;
+  const jours=[...document.querySelectorAll(".obJour:checked")].map(c=>c.value);
+  const sante=($("#obSante").value||"").trim(),gouts=($("#obGouts").value||"").trim(),bloc=($("#obBloc").value||"").trim();
+  const reponses="Objectif: "+obj+"\nNiveau: "+niv+"\nJours dispo pour bouger: "+(jours.join(", ")||"non précisé")+"\nTemps type par séance: "+temps+"\nContraintes santé: "+(sante||"-")+"\nGoûts (aime / n'aime pas): "+(gouts||"-")+"\nCe qui a bloqué avant: "+(bloc||"-");
+  const set=(m)=>{const s=$("#obStatus");if(s)s.textContent=m;};
+  const btn=$("#obGo");if(btn)btn.disabled=true;
+  try{
+    set("1/3 · Je construis ton profil…");
+    const psys="À partir des RÉPONSES d'un questionnaire, rédige une FICHE DE PROFIL concise et structurée (français), sections fixes : Identité & contexte, Santé & contraintes, Disponibilités (jours + temps type), Préférences (aime / n'aime pas), Objectifs, Notes pour le coaching. Conserve les disponibilités telles quelles. "+SCI;
+    let r=await callAI({system:psys,messages:[{role:"user",text:reponses}],modelId:S.cheap,label:"profil",maxTokens:1500});
+    profile={text:r.text,updated:Date.now()};save("profile",profile);
+    set("2/3 · Je génère ton programme…");
+    const gsys="Tu es Kalos (kalokagathia). À partir du PROFIL, construis un PROGRAMME DE VIE personnalisé et durable, structuré en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations), avec 1 objectif clair + 2 à 4 actions concrètes par pilier, adapté aux disponibilités et aux goûts. Réaliste et progressif. "+SCI;
+    r=await callAI({system:gsys,messages:[{role:"user",text:"PROFIL:\n"+profile.text}],modelId:S.power,label:"programme",maxTokens:6000});
+    program={text:r.text,updated:Date.now()};save("program",program);
+    set("3/3 · Je prépare tes actions du jour…");
+    const qsys='À partir du PROGRAMME et des disponibilités, propose 3 à 5 QUÊTES concrètes réalisables AUJOURD\'HUI. Réponds UNIQUEMENT par un tableau JSON : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25.';
+    r=await callAI({system:qsys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes",maxTokens:1200});
+    const arr=extractJSON(r.text)||[];
+    quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
+    save("quests",quests);
+    toast("Ton plan est prêt ✓");navTo("accueil");
+  }catch(e){toast(e.message);set("");if(btn)btn.disabled=false;}
+}
+const DISCOVERY_SYSTEM=`Tu es Kalos, un coach de vie chaleureux et efficace (inspiré de la kalokagathia).
+RÈGLE ABSOLUE : pose EXACTEMENT UNE question à la fois, très courte (1 phrase). JAMAIS plusieurs questions dans un même message. Pas de long paragraphe.
+Termine TOUJOURS ton message par une ligne, au format EXACT :
+OPTIONS: réponse courte 1 | réponse courte 2 | réponse courte 3
+en proposant 2 à 4 réponses rapides que la personne peut choisir d'un simple tap (elle peut aussi répondre librement).
+Tu apprends peu à peu : santé, habitudes, contraintes (asthme, dos, genoux), goûts, temps dispo, objectifs. Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.
+Quand tu en sais assez, dis-le en une phrase et propose OPTIONS: Générer mon profil | Continuer.
+Si la personne te demande de MODIFIER son planning ou sa journée (déplacer, ajouter, réduire une activité, « pas le temps mardi », « décale ma séance », etc.), confirme en une phrase, PUIS ajoute tout à la fin une ligne au format EXACT : ACTION: PLANNING | description claire et précise du changement demandé. N'ajoute cette ligne QUE pour une vraie demande de modification du planning.
+Commence par une phrase d'accueil + ta première question + la ligne OPTIONS.`;
+const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
+let pendingImgs=[];
+function rDecouverte(){
+  $("#main").innerHTML=`<h1 class="page">🧭 Découverte</h1><p class="sub">L'IA apprend qui tu es. Tu peux joindre des photos avec une légende.</p>${keyBanner()}
+   <div class="card"><div class="chat" id="chat"></div><div id="quickReplies" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div><div id="prevWrap"></div>
+     <div class="chatbar"><button class="iconbtn" id="photoBtn" title="Joindre une photo">📷</button>
+       <textarea id="chatIn" placeholder="Écris ta réponse (ou une légende pour ta photo)..."></textarea>
+       <button class="btn" id="sendBtn">Envoyer</button></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+       <button class="ghost sm" id="startBtn">▶︎ Démarrer / relancer</button>
+       <button class="ghost sm" id="genProfileBtn">🪪 Mettre à jour mon profil</button>
+       <button class="ghost sm" id="clearChat">🗑 Effacer</button></div></div>`;
+  drawChat();drawPrev();
+  $("#startBtn").onclick=startDiscovery;$("#sendBtn").onclick=sendDiscovery;$("#genProfileBtn").onclick=genProfile;
+  $("#photoBtn").onclick=async()=>{const ims=await pickImages();if(ims.length){pendingImgs=pendingImgs.concat(ims);drawPrev();}};
+  $("#clearChat").onclick=()=>{if(confirm("Effacer la conversation ?")){chat=[];save("chat",chat);drawChat();}};
+  $("#chatIn").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendDiscovery();}});
+}
+function drawPrev(){const w=$("#prevWrap");if(!w)return;if(!pendingImgs.length){w.innerHTML="";return;}w.innerHTML=`<div class="imgprev">${pendingImgs.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${pendingImgs.length} photo(s) prête(s)</span><button class="ghost sm" id="rmImg" style="margin-left:auto">✕</button></div>`;$("#rmImg").onclick=()=>{pendingImgs=[];drawPrev();};}
+function parseOptions(t){t=t||"";const m=t.match(/OPTIONS:\s*(.+)\s*$/im);const options=m?m[1].split("|").map(s=>s.trim()).filter(Boolean).slice(0,4):[];const clean=t.replace(/\n?\s*OPTIONS:.*$/im,"").replace(/\n?\s*ACTION:.*$/im,"").trim();return{clean,options};}
+function parseAction(t){const m=(t||"").match(/ACTION:\s*PLANNING\s*\|\s*(.+?)\s*$/im);return m?m[1].trim():null;}
+function drawChat(){const box=$("#chat");if(!box)return;box.innerHTML=chat.length?chat.map(m=>{const txt=m.role==="assistant"?parseOptions(m.text).clean:m.text;return `<div class="msg ${m.role==="assistant"?"ai":"me"}">${m.photo?("📷"+(m.nph>1?"×"+m.nph:"")+" "):""}${esc(txt)}</div>`;}).join(""):`<div class="muted" style="padding:8px">Clique « Démarrer » pour commencer.</div>`;box.scrollTop=box.scrollHeight;renderQuick();}
+function renderQuick(){const q=$("#quickReplies");if(!q)return;const last=chat[chat.length-1];if(!last||last.role!=="assistant"){q.innerHTML="";return;}const o=parseOptions(last.text).options;q.innerHTML=o.map(x=>`<button class="ghost sm" data-quick="${esc(x).replace(/"/g,'&#34;')}">${esc(x)}</button>`).join("");q.querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>{const v=b.getAttribute("data-quick");if(/profil/i.test(v)){genProfile();return;}const inp=$("#chatIn");if(inp){inp.value=v;sendDiscovery();}});}
+async function startDiscovery(){if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");chat=[];save("chat",chat);drawChat();await aiTurn(true);}
+async function sendDiscovery(){const inp=$("#chatIn");const t=inp.value.trim();if(!t&&!pendingImgs.length)return;if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");const imgs=pendingImgs.map(i=>i.b64);pendingImgs=[];drawPrev();chat.push({role:"user",text:t||"(photos)",photo:imgs.length>0,nph:imgs.length});save("chat",chat);inp.value="";drawChat();await aiTurn(false,imgs);}
+async function aiTurn(first,imgs){
+  const btn=$("#sendBtn");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
+  try{
+    let msgs;
+    if(first){msgs=[{role:"user",text:"Commençons l'entretien de découverte."}];}
+    else{msgs=chat.map(m=>({role:m.role==="assistant"?"assistant":"user",text:m.text}));if(imgs&&imgs.length){msgs[msgs.length-1]={role:"user",text:chat[chat.length-1].text,imgs:imgs};}}
+    const r=await callAI({system:DISCOVERY_SYSTEM,messages:msgs,modelId:S.cheap,label:"découverte"});
+    chat.push({role:"assistant",text:r.text});save("chat",chat);drawChat();
+    const act=parseAction(r.text);
+    if(act){ if(planning.data){ try{const note=await applyPlanningChange(act);chat.push({role:"assistant",text:"✓ Planning mis à jour. "+(note||"")});save("chat",chat);drawChat();toast("Planning mis à jour ✓");}catch(e){toast(e.message);} } else { toast("Génère d'abord un planning (onglet Planning)."); } }
+  }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="Envoyer";}}
+}
+async function genProfile(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");if(chat.length<2)return toast("Échange un peu plus d'abord.");
+  const b=$("#genProfileBtn");b.disabled=true;b.innerHTML='<span class="spin"></span>';
+  try{const sys="Tu METS À JOUR une FICHE DE PROFIL. On te donne la FICHE EXISTANTE (parfois vide) et une CONVERSATION récente. Intègre les NOUVEAUX éléments : complète et corrige les sections, FUSIONNE, supprime les doublons. Garde une fiche CONCISE et structurée avec ces sections fixes : Identité & contexte, Santé & contraintes, Habitudes, Envies & valeurs, Ambitions, Budget & environnement, Notes pour le coaching. Maximum ~1 page. Ne rallonge pas inutilement, ne répète rien, ne réécris pas ce qui n'a pas changé. Renvoie la fiche COMPLÈTE mise à jour, en français.";
+    const conv=chat.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n");
+    const r=await callAI({system:sys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION RÉCENTE:\n"+conv}],modelId:S.cheap,label:"profil"});
+    profile={text:r.text,updated:Date.now()};save("profile",profile);toast("Profil généré ✓");current="profil";buildNav();render();
+  }catch(e){toast(e.message);}finally{if(b){b.disabled=false;b.textContent="🪪 Mettre à jour mon profil";}}
+}
+
+function rProfil(){
+  $("#main").innerHTML=`<h1 class="page">🪪 Profil</h1><p class="sub">La fiche que l'IA construit sur toi — modifiable.</p>${keyBanner()}
+   <div class="card"><textarea id="profTxt" style="min-height:320px">${esc(profile.text)}</textarea>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" id="saveProf">💾 Enregistrer</button>
+     <span class="muted">${profile.updated?("MàJ "+new Date(profile.updated).toLocaleString("fr-FR")):"Aucun profil — passe par la Découverte."}</span></div></div>`;
+  $("#saveProf").onclick=()=>{profile.text=$("#profTxt").value;profile.updated=Date.now();save("profile",profile);toast("Enregistré ✓");};
+}
+
+let sallePending=[];
+function rSalle(){
+  $("#main").innerHTML=`<h1 class="page">🏋️ Salle — mon programme</h1><p class="sub">Donne ton programme actuel (texte ou photo). L'IA l'analyse, propose des modifications et des objectifs.</p>${keyBanner()}
+   <div class="card"><label>Ton programme actuel (séances, exercices, séries/répétitions...)</label>
+     <textarea id="salleIn" placeholder="ex. Lundi pecs/triceps : développé couché 4x8...">${esc(salle.input)}</textarea>
+     <div id="sallePrevWrap" style="margin-top:8px"></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="analyseSalle">🔍 Analyser mon programme</button></div></div>
+   <div class="card"><h2>Analyse & recommandations</h2><div class="formatted" id="salleOut">${salle.analysis?fmt(salle.analysis):'<span class="muted">Aucune analyse pour le moment.</span>'}</div>${salle.updated?`<p class="muted" style="margin-top:8px">Analysé le ${new Date(salle.updated).toLocaleString("fr-FR")}</p>`:""}</div>`;
+  $("#sallePhoto").onclick=async()=>{const ims=await pickImages(1280);if(ims.length){sallePending=sallePending.concat(ims);$("#sallePrevWrap").innerHTML=`<div class="imgprev">${sallePending.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${sallePending.length} photo(s) jointe(s)</span><button class="ghost sm" id="rmS" style="margin-left:auto">✕</button></div>`;$("#rmS").onclick=()=>{sallePending=[];$("#sallePrevWrap").innerHTML="";};}};
+  $("#analyseSalle").onclick=analyseSalle;
+}
+async function analyseSalle(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  const txt=$("#salleIn").value.trim();if(!txt&&!sallePending.length)return toast("Écris ton programme ou ajoute une photo.");
+  salle.input=txt;save("salle",salle);const b=$("#analyseSalle");b.disabled=true;b.innerHTML='<span class="spin"></span> Analyse...';
+  try{
+    const sys=`Tu es Kalos, coach sportif et de vie (kalokagathia). On te donne le PROGRAMME DE SALLE actuel (texte et/ou photo) et le PROFIL.
+Analyse-le et réponds en français, structuré, sous ces titres :
+## Lecture du programme (ce que je comprends)
+## Points forts
+## Points à améliorer / risques (tiens compte des contraintes : dos, genoux, asthme...)
+## Modifications proposées (concrètes : exercices, séries/reps, fréquence)
+## Objectifs à atteindre (progressifs et datés si possible, ex. tractions)
+Le concret prime, mais reste réaliste, sûr et durable.
+${SCI}`;
+    const msg={role:"user",text:"PROFIL:\n"+(profile.text||"(non renseigné)")+"\n\nPROGRAMME ACTUEL:\n"+(txt||"(voir photo)")};
+    if(sallePending.length)msg.imgs=sallePending.map(i=>i.b64);
+    const r=await callAI({system:sys,messages:[msg],modelId:S.power,label:"analyse salle"});
+    salle.analysis=r.text;salle.updated=Date.now();save("salle",salle);sallePending=[];toast("Analyse prête ✓");render();
+  }catch(e){toast(e.message);}finally{if(b){b.disabled=false;}}
+}
+
+let mealPending=null;
+function renderMeals(){
+  const ms=nutrition.meals||[];
+  if(!ms.length)return '<span class="muted">Aucun repas analysé pour le moment.</span>';
+  const today=todayStr();const tm=ms.filter(m=>m.date===today);
+  const sum=tm.reduce((a,m)=>({k:a.k+(+m.kcal||0),p:a.p+(+m.prot||0)}),{k:0,p:0});
+  const head=tm.length?`<div style="background:var(--accent-l);border-radius:10px;padding:10px;margin-bottom:10px"><b>Aujourd'hui :</b> ~${Math.round(sum.k)} kcal · ~${Math.round(sum.p)} g de protéines <span class="muted">(${tm.length} repas)</span></div>`:"";
+  return head+ms.slice(0,15).map((m,i)=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
+    <div style="display:flex;gap:10px;align-items:center">${m.thumb?`<img src="${m.thumb}" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none">`:""}<div style="flex:1"><div>${esc(m.plat||"Repas")}</div><span class="muted" style="font-size:12px">${esc(m.date||"")} · ~${esc(String(m.kcal??"?"))} kcal · ${esc(String(m.prot??"?"))} g prot.</span></div><button class="btn sm ghost" data-delmeal="${i}">✕</button></div>
+    ${m.comment?`<div class="muted" style="font-size:12px">${esc(m.comment)}</div>`:""}
+    <div class="muted" style="font-size:11px">Glucides ${esc(String(m.gluc??"?"))} g · Lipides ${esc(String(m.lip??"?"))} g</div>
+  </div>`).join("");
+}
+async function analyseMeal(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  if(!mealPending)return toast("Ajoute une photo de ton repas.");
+  const note=($("#mealNote").value||"").trim();
+  const b=$("#analyseMeal");if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> Analyse...';}
+  try{
+    const sys=`Tu es Kalos, coach nutrition. On te donne la PHOTO d'un repas (+ une note éventuelle). Estime au mieux les valeurs nutritionnelles de la portion visible. Les estimations sont APPROXIMATIVES.
+Réponds UNIQUEMENT par un JSON valide, sans texte autour : {"plat":"nom court du plat","kcal":nombre_entier,"proteines":nombre,"glucides":nombre,"lipides":nombre,"commentaire":"1 phrase utile pour une recomposition (perte de gras + maintien du muscle)"}. Valeurs en grammes sauf kcal.`;
+    const msg={role:"user",text:"Note du repas : "+(note||"(aucune)"),img:mealPending.b64};
+    const r=await callAI({system:sys,messages:[msg],modelId:S.cheap,label:"repas photo"});
+    const d=extractJSONobj(r.text);
+    if(!d)throw new Error("Réponse non exploitable, réessaie.");
+    if(!nutrition.meals)nutrition.meals=[];
+    nutrition.meals.unshift({date:todayStr(),plat:d.plat||note||"Repas",kcal:d.kcal,prot:d.proteines,gluc:d.glucides,lip:d.lipides,comment:d.commentaire,thumb:mealPending.dataUrl});
+    nutrition.meals=nutrition.meals.slice(0,25);
+    save("nutrition",nutrition);mealPending=null;toast("Repas analysé ✓");
+  }catch(e){toast(e.message);}finally{render();}
+}
+function rNutrition(){
+  $("#main").innerHTML=`<h1 class="page">🍽️ Nutrition</h1><p class="sub">Photographie tes repas pour estimer tes apports, et reçois des conseils adaptés à ton budget et ta région.</p>${keyBanner()}
+   <div class="card" style="border-left:4px solid var(--accent)"><h2>📷 Analyser un repas en photo</h2>
+     <p class="muted" style="margin:-6px 0 8px">Prends ton assiette en photo (+ une note si tu veux). L'IA estime calories, protéines, glucides, lipides. <i>Ce sont des estimations approximatives.</i></p>
+     <div id="mealPrevWrap"></div>
+     <input id="mealNote" placeholder="note optionnelle : ex. poulet, riz, brocoli, huile d'olive">
+     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="mealPhoto">📷 Photo du repas</button><button class="btn" id="analyseMeal">🔍 Analyser</button></div>
+     <div id="mealsList" style="margin-top:14px">${renderMeals()}</div></div>
+   <div class="card"><h2>Mes préférences</h2><div class="row"><div><label>Budget courses (€ / semaine)</label><input id="nBudget" type="number" inputmode="decimal" value="${esc(nutrition.budget)}"></div><div><label>Région / cuisine locale</label><input id="nRegion" value="${esc(nutrition.region||"Corse")}"></div></div>
+     <label>Préférences (ce que tu aimes / n'aimes pas)</label><textarea id="nPrefs" placeholder="ex. j'adore le poisson, peu de viande rouge, je cuisine simple...">${esc(nutrition.prefs)}</textarea>
+     <label>Allergies / intolérances</label><input id="nAllerg" placeholder="ex. arachides, lactose..." value="${esc(nutrition.allergies)}">
+     <label>Régime particulier (optionnel)</label><input id="nRegime" placeholder="ex. aucun, végétarien, sans porc..." value="${esc(nutrition.regime)}">
+     <div style="margin-top:12px"><button class="btn" id="genNut">🥗 Générer mes conseils nutrition</button></div></div>
+   <div class="card"><h2>Mes conseils nutrition</h2><div class="formatted" id="nutOut">${nutrition.advice?fmt(nutrition.advice):'<span class="muted">Aucun conseil pour le moment.</span>'}</div>${nutrition.updated?`<p class="muted" style="margin-top:8px">Généré le ${new Date(nutrition.updated).toLocaleString("fr-FR")}</p>`:""}</div>`;
+  $("#mealPhoto").onclick=async()=>{const im=await pickImage(700);if(im){mealPending=im;$("#mealPrevWrap").innerHTML=`<div class="imgprev"><img src="${im.dataUrl}"><span>Photo prête</span><button class="ghost sm" id="rmMeal" style="margin-left:auto">✕</button></div>`;$("#rmMeal").onclick=()=>{mealPending=null;$("#mealPrevWrap").innerHTML="";};}};
+  $("#analyseMeal").onclick=analyseMeal;
+  $("#genNut").onclick=genNutrition;
+}
+async function genNutrition(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  nutrition.budget=$("#nBudget").value;nutrition.region=$("#nRegion").value;nutrition.prefs=$("#nPrefs").value;nutrition.allergies=$("#nAllerg").value;nutrition.regime=$("#nRegime").value;save("nutrition",nutrition);
+  const b=$("#genNut");b.disabled=true;b.innerHTML='<span class="spin"></span> Génération...';
+  try{
+    const region=nutrition.region||"ta région";
+    const sys="Tu es Kalos, coach nutrition (kalokagathia). À partir du PROFIL et des CONTRAINTES (budget, préférences, allergies, régime, région), propose une approche nutrition SIMPLE, durable et gourmande, orientée recomposition corporelle (perte de gras + maintien/gain de muscle).\nRéponds en français, structuré :\n## Principes pour toi (le pourquoi)\n## Idées de repas (matin, midi, soir, collation) ancrées dans la cuisine de "+region+" et méditerranéenne\n## Exemple de semaine\n## Liste de courses dans le budget indiqué\n## À éviter / vigilance\nRESPECTE STRICTEMENT les allergies et le budget. Privilégie les produits locaux et de saison.\n"+SCI;
+    const ctx="PROFIL:\n"+(profile.text||"(non renseigné)")+"\n\nCONTRAINTES NUTRITION:\n- Budget: "+(nutrition.budget||"non précisé")+" €/semaine\n- Région: "+region+"\n- Préférences: "+(nutrition.prefs||"-")+"\n- Allergies: "+(nutrition.allergies||"aucune")+"\n- Régime: "+(nutrition.regime||"aucun");
+    const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.power,label:"nutrition"});
+    nutrition.advice=r.text;nutrition.updated=Date.now();save("nutrition",nutrition);toast("Conseils nutrition prêts ✓");render();
+  }catch(e){toast(e.message);}finally{if(b){b.disabled=false;b.textContent="🥗 Générer mes conseils nutrition";}}
+}
+function rProgramme(){
+  $("#main").innerHTML=`<h1 class="page">📋 Programme & style de vie</h1><p class="sub">Construit depuis ton profil, ta salle, ta nutrition et tes données de suivi, vers la kalokagathia.</p>${keyBanner()}
+   <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="genProg">✨ Générer / régénérer</button><button class="ghost" id="adjProg">🔄 Ajuster selon mes données</button></div>
+     <div class="muted" style="margin-top:8px">${program.updated?("Généré le "+new Date(program.updated).toLocaleString("fr-FR")):""}</div>
+     <div class="formatted" id="progOut" style="margin-top:14px">${program.text?fmt(program.text):'<span class="muted">Aucun programme. Génère-le depuis ton profil.</span>'}</div></div>
+   <div class="card"><h2>🔄 Ajustements selon ton suivi</h2><div class="formatted" id="adjOut"><span class="muted">Clique « Ajuster selon mes données » : le coach lit ton suivi récent (poids, sommeil, mensurations…) et propose des ajustements.</span></div></div>`;
+  $("#genProg").onclick=genProgram;$("#adjProg").onclick=adjustPlan;
+}
+async function adjustPlan(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  if(!program.text)return toast("Génère d'abord ton programme.");
+  const sum=trackingSummary();
+  if(!sum)return toast("Ajoute d'abord des mesures dans Suivi.");
+  const b=$("#adjProg");b.disabled=true;b.innerHTML='<span class="spin"></span> Analyse...';
+  try{
+    const sys="Tu es Kalos. Compare le PROGRAMME actuel aux DONNÉES DE SUIVI récentes et propose des AJUSTEMENTS concrets et priorisés (quoi augmenter, réduire ou changer, et pourquoi), en français, court et actionnable. Si les données sont insuffisantes ou si tout va bien, dis-le honnêtement.\n"+SCI;
+    const ctx="PROFIL:\n"+(profile.text||"-")+"\n\nPROGRAMME ACTUEL:\n"+program.text+"\n\nDONNÉES DE SUIVI:\n"+sum;
+    const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.power,label:"ajustement"});
+    $("#adjOut").innerHTML=fmt(r.text);toast("Ajustements prêts ✓");
+  }catch(e){toast(e.message);}finally{if(b){b.disabled=false;b.textContent="🔄 Ajuster selon mes données";}}
+}
+async function genProgram(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");if(!profile.text)return toast("Crée d'abord ton profil (Découverte).");
+  const btn=$("#genProg");btn.disabled=true;btn.innerHTML='<span class="spin"></span> Génération...';
+  try{const sys=`Tu es Kalos (kalokagathia). À partir du PROFIL (et de l'analyse de salle si fournie), construis un PROGRAMME DE VIE personnalisé et DURABLE, qui rende la personne plus disciplinée et l'améliore physiquement ET psychologiquement.
+Structure en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations).
+Pour chaque pilier : 1 objectif clair + 2 à 4 actions concrètes adaptées aux contraintes. Réaliste, progressif, tenable. Pas de jargon.
+${SCI}`;
+    const ctx="PROFIL:\n"+profile.text+(salle.analysis?("\n\nANALYSE SALLE:\n"+salle.analysis):"")+(nutrition.advice?("\n\nNUTRITION:\n"+nutrition.advice):"")+(trackingSummary()?("\n\nDONNÉES DE SUIVI RÉCENTES:\n"+trackingSummary()):"");
+    const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.power,label:"programme",maxTokens:6000});
+    program={text:r.text,updated:Date.now()};save("program",program);toast("Programme généré ✓");render();
+  }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="✨ Générer / régénérer";}}
+}
+
+function rQuetes(){
+  const fresh=quests.date===todayStr();
+  $("#main").innerHTML=`<h1 class="page">⚔️ Quêtes du jour</h1><p class="sub">Tes actions concrètes. Chaque quête validée rapporte de l'XP.</p>${keyBanner()}
+   <div class="card"><button class="btn" id="genQ">🎲 ${fresh?"Régénérer":"Générer"} les quêtes</button><span class="muted" style="margin-left:10px">${quests.date?("Quêtes du "+quests.date):""}</span>
+     <div id="qList" style="margin-top:16px">${renderQuests()}</div></div>`;
+  $("#genQ").onclick=genQuests;bindQuests();
+}
+function renderQuests(){if(!quests.items.length)return '<span class="muted">Génère tes quêtes depuis ton programme.</span>';
+  return quests.items.map((q,i)=>{const p=PILLARS[q.pillar]||{label:q.pillar,color:"var(--grey)"};return `<div class="quest ${q.done?"done":""}"><input type="checkbox" data-i="${i}" ${q.done?"checked":""}><div><div>${esc(q.text)}</div><span class="pill" style="background:${p.color}">${p.label}</span></div><div class="q-x">+${q.xp} XP</div></div>`;}).join("");}
+function bindQuests(){document.querySelectorAll('#qList input[type=checkbox]').forEach(cb=>cb.onchange=()=>{const i=+cb.dataset.i,q=quests.items[i];if(cb.checked&&!q.done){q.done=true;addXp(q.pillar,q.xp);toast("+"+q.xp+" XP "+(PILLARS[q.pillar]?.label||""));}else if(!cb.checked&&q.done){q.done=false;addXp(q.pillar,-q.xp);}save("quests",quests);$("#qList").innerHTML=renderQuests();bindQuests();});}
+async function genQuests(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");if(!program.text)return toast("Génère d'abord ton programme.");
+  const btn=$("#genQ");btn.disabled=true;btn.innerHTML='<span class="spin"></span>';
+  try{const sys=`À partir du PROGRAMME, propose 5 à 7 QUÊTES concrètes réalisables AUJOURD'HUI, sur plusieurs piliers. Réponds UNIQUEMENT par un tableau JSON valide : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25. pillar exactement l'une des 6 valeurs en minuscules.`;
+    const r=await callAI({system:sys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes"});
+    const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)throw new Error("Réponse non exploitable, réessaie.");
+    quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
+    save("quests",quests);toast("Quêtes générées ✓");
+  }catch(e){toast(e.message);}finally{render();}
+}
+function extractJSON(t){try{return JSON.parse(t);}catch(e){}const a=t.indexOf("["),b=t.lastIndexOf("]");if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1));}catch(e){}}return null;}
+
+function rProgression(){
+  const{lvl,into,need}=levelInfo();const max=Math.max(100,...Object.values(progress.pillars));
+  $("#main").innerHTML=`<h1 class="page">📈 Progression</h1><p class="sub">Ton personnage, c'est toi.</p>
+   <div class="card"><div class="stat"><div class="box"><b>${lvl}</b><span>Niveau</span></div><div class="box"><b>${progress.xp}</b><span>XP total</span></div><div class="box"><b>${into}/${need}</b><span>vers niveau ${lvl+1}</span></div></div></div>
+   <div class="card"><h2>Les 6 piliers</h2>${Object.keys(PILLARS).map(k=>{const v=progress.pillars[k],p=PILLARS[k];return `<div class="pbar"><div class="top"><span>${p.label}</span><span class="muted">${v} XP</span></div><div class="track"><i style="width:${Math.round(v/max*100)}%;background:${p.color}"></i></div></div>`;}).join("")}</div>`;
+}
+
+function rCoffre(){
+  if(coffre.lastMonth!==monthStr()){coffre.balance+=S.monthly;coffre.lastMonth=monthStr();save("coffre",coffre);}
+  $("#main").innerHTML=`<h1 class="page">🪙 Coffre personnel</h1><p class="sub">Une cagnotte alimentée chaque mois selon tes moyens. Elle finance tes récompenses.</p>
+   <div class="card"><div class="stat"><div class="box"><b>${coffre.balance.toFixed(2)} €</b><span>Solde</span></div><div class="box"><b>${S.monthly} €</b><span>Versement mensuel</span></div></div><p class="muted" style="margin-top:10px">Le versement se règle dans ⚙️ Réglages.</p></div>
+   <div class="card"><h2>Ajouter une récompense</h2><div class="row"><div><label>Récompense</label><input id="rwName" placeholder="ex. baguettes de batterie"></div><div style="max-width:160px"><label>Coût (€)</label><input id="rwCost" type="number" min="0" step="1"></div></div><div style="margin-top:12px"><button class="btn" id="addRw">+ Ajouter</button></div></div>
+   <div class="card"><h2>Mes récompenses</h2><div id="rwList">${renderRewards()}</div></div>`;
+  $("#addRw").onclick=()=>{const n=$("#rwName").value.trim(),c=+$("#rwCost").value;if(!n||!c)return toast("Nom + coût requis.");coffre.rewards.push({name:n,cost:c,bought:false});save("coffre",coffre);render();};
+  bindRewards();
+}
+function renderRewards(){if(!coffre.rewards.length)return '<span class="muted">Aucune récompense.</span>';return coffre.rewards.map((r,i)=>`<div class="quest ${r.bought?"done":""}"><div><div>${esc(r.name)}</div><span class="muted">${r.cost} €</span></div><div class="q-x">${r.bought?"✓ obtenue":`<button class="btn sm" data-buy="${i}">Débloquer</button>`}</div></div>`).join("");}
+function bindRewards(){document.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{const i=+b.dataset.buy,r=coffre.rewards[i];if(coffre.balance<r.cost)return toast("Coffre insuffisant.");coffre.balance-=r.cost;r.bought=true;save("coffre",coffre);toast("Débloqué 🎉");render();});}
+
+let suiviPending=null;
+function sleepDur(c,r){if(!c||!r)return null;const[ch,cm]=c.split(":").map(Number),[rh,rm]=r.split(":").map(Number);let m=(rh*60+rm)-(ch*60+cm);if(m<=0)m+=1440;return m;}
+function hm(mins){if(mins==null||mins==="")return "-";const h=Math.floor(mins/60),m=Math.round(mins%60);return h+" h"+(m?(" "+String(m).padStart(2,"0")):"");}
+function trackingSummary(){
+  if(!tracking.length)return "";
+  const last=tracking[0],lines=[];
+  lines.push("Mesures enregistrées: "+tracking.length);
+  if(last.date)lines.push("Dernière: "+last.date);
+  if(last.poids)lines.push("Poids actuel: "+last.poids+" kg");
+  const wP=tracking.filter(t=>t.poids);if(wP.length>=2){const d=+wP[0].poids-+wP[wP.length-1].poids;lines.push("Évolution poids: "+(d>=0?"+":"")+d.toFixed(1)+" kg depuis le début");}
+  if(last.taille)lines.push("Tour de taille actuel: "+last.taille+" cm");
+  const wT=tracking.filter(t=>t.taille);if(wT.length>=2){const d=+wT[0].taille-+wT[wT.length-1].taille;lines.push("Évolution tour de taille: "+(d>=0?"+":"")+d.toFixed(1)+" cm");}
+  const sl=tracking.filter(t=>t.somMin).slice(0,7).map(t=>t.somMin);if(sl.length)lines.push("Sommeil moyen récent: "+hm(Math.round(sl.reduce((a,b)=>a+b,0)/sl.length)));
+  const en=tracking.filter(t=>t.ener).slice(0,7).map(t=>+t.ener);if(en.length)lines.push("Énergie moyenne récente: "+(en.reduce((a,b)=>a+b,0)/en.length).toFixed(1)+"/10");
+  return lines.join("\n");
+}
+function rSuivi(){
+  $("#main").innerHTML=`<h1 class="page">📏 Suivi</h1><p class="sub">Pas seulement le poids. Note ton sommeil, tes mensurations, ton énergie et tes photos.</p>
+   <div class="card"><h2>Nouvelle mesure</h2>
+     <div class="row"><div><label>Date</label><input id="tDate" type="date" value="${todayStr()}"></div><div><label>Poids (kg)</label><input id="tPoids" type="number" step="0.1" inputmode="decimal"></div></div>
+     <div class="row"><div><label>Heure de coucher</label><input id="tCouch" type="time"></div><div><label>Heure de réveil</label><input id="tReve" type="time"></div><div><label>Sommeil (calculé)</label><input id="tSomCalc" readonly placeholder="—" style="background:var(--accent-l);font-weight:600"></div></div>
+     <div class="row"><div><label>Qualité du sommeil (1-10)</label><input id="tQsom" type="number" min="1" max="10" inputmode="numeric"></div><div><label>Énergie (1-10)</label><input id="tEner" type="number" min="1" max="10" inputmode="numeric"></div><div><label>Humeur (1-10)</label><input id="tMood" type="number" min="1" max="10" inputmode="numeric"></div></div>
+     <h2 style="margin-top:18px;font-size:15px">Mensurations (cm)</h2>
+     <div class="row"><div><label>Tour de taille</label><input id="tTaille" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de hanches</label><input id="tHanch" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de poitrine</label><input id="tPoit" type="number" step="0.1" inputmode="decimal"></div></div>
+     <div class="row"><div><label>Tour de bras (contracté)</label><input id="tBras" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de cuisse</label><input id="tCuis" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de mollet</label><input id="tMol" type="number" step="0.1" inputmode="decimal"></div></div>
+     <label>Note / ressenti</label><input id="tNote" placeholder="ex. bonne séance dos, jambes lourdes...">
+     <div id="suiviPrev" style="margin-top:10px"></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="suiviPhoto">📷 Photo</button><button class="btn" id="addT">+ Enregistrer</button></div></div>
+   <div class="card"><h2>📐 Comment et quand prendre tes mesures</h2>
+     <div class="formatted" style="font-size:13.5px">
+       <b>Quand :</b> le matin, à jeun, après être allé aux toilettes, avant de boire ou manger — pour des chiffres comparables d'une fois à l'autre.<br>
+       <b>Matériel :</b> un mètre ruban souple. Tiens-toi détendu, ne rentre pas le ventre, ne serre pas le ruban.<br><br>
+       <b>Poids :</b> pèse-toi 2-3 fois/semaine le matin et regarde la <b>moyenne</b> (le poids varie chaque jour à cause de l'eau — ne te fie pas à un seul chiffre).<br>
+       <b>Tour de taille :</b> au niveau du nombril, sans rentrer le ventre (l'indicateur santé n°1).<br>
+       <b>Hanches :</b> à l'endroit le plus large des fessiers.<br>
+       <b>Poitrine :</b> au niveau des tétons, bras le long du corps.<br>
+       <b>Bras :</b> biceps contracté, au point le plus gros.<br>
+       <b>Cuisse :</b> au plus large, juste sous le pli des fessiers. &nbsp;<b>Mollet :</b> au plus large.<br><br>
+       <b>À quelle fréquence :</b> sommeil + énergie chaque jour ; mensurations 1×/semaine ; photos 1×/mois (même lumière, même pose, 3 angles : face, profil, dos).
+     </div></div>
+   <div class="card"><h2>Historique</h2><div style="overflow-x:auto">${renderTracking()}</div></div>`;
+  const upd=()=>{const d=sleepDur($("#tCouch").value,$("#tReve").value);$("#tSomCalc").value=d!=null?hm(d):"";};
+  $("#tCouch").oninput=upd;$("#tReve").oninput=upd;
+  $("#suiviPhoto").onclick=async()=>{const im=await pickImage(600);if(im){suiviPending=im;$("#suiviPrev").innerHTML=`<div class="imgprev"><img src="${im.dataUrl}"><span>Photo jointe</span><button class="ghost sm" id="rmSu" style="margin-left:auto">✕</button></div>`;$("#rmSu").onclick=()=>{suiviPending=null;$("#suiviPrev").innerHTML="";};}};
+  $("#addT").onclick=()=>{const couch=$("#tCouch").value,reve=$("#tReve").value;const row={date:$("#tDate").value,poids:$("#tPoids").value,couch,reve,somMin:sleepDur(couch,reve),qsom:$("#tQsom").value,ener:$("#tEner").value,mood:$("#tMood").value,taille:$("#tTaille").value,hanch:$("#tHanch").value,poit:$("#tPoit").value,bras:$("#tBras").value,cuis:$("#tCuis").value,mol:$("#tMol").value,note:$("#tNote").value,photo:suiviPending?suiviPending.dataUrl:null};if(!row.date)return toast("Mets une date.");tracking.unshift(row);save("tracking",tracking);suiviPending=null;toast("Mesure enregistrée ✓");render();};
+}
+function renderTracking(){if(!tracking.length)return '<span class="muted">Aucune mesure.</span>';return `<table><tr><th>Date</th><th>Poids</th><th>Sommeil</th><th>Taille</th><th>Hanch.</th><th>Poitr.</th><th>Bras</th><th>Cuisse</th><th>Mol.</th><th>Én.</th><th>Note</th><th>Photo</th><th></th></tr>${tracking.map((t,i)=>`<tr><td>${esc(t.date)}</td><td>${esc(t.poids||"-")}</td><td>${t.somMin!=null&&t.somMin!==""?hm(t.somMin):"-"}${t.couch&&t.reve?`<br><span class="muted" style="font-size:11px">${esc(t.couch)}→${esc(t.reve)}</span>`:""}</td><td>${esc(t.taille||"-")}</td><td>${esc(t.hanch||"-")}</td><td>${esc(t.poit||"-")}</td><td>${esc(t.bras||"-")}</td><td>${esc(t.cuis||"-")}</td><td>${esc(t.mol||"-")}</td><td>${esc(t.ener||"-")}</td><td>${esc(t.note||"")}</td><td>${t.photo?`<img src="${t.photo}" class="thumb" style="max-width:54px;max-height:54px">`:"-"}</td><td><button class="btn sm ghost" data-del="${i}">✕</button></td></tr>`).join("")}</table>`;}
+
+function extractJSONobj(t){try{return JSON.parse(t);}catch(e){}const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1));}catch(e){}}return null;}
+function rCalendrier(){
+  const p=planning.data;
+  $("#main").innerHTML=`<h1 class="page">📅 Planning</h1><p class="sub">Ta semaine jour par jour : quoi faire, à quelle heure, et pourquoi (bouton Infos). Avec des recettes.</p>${keyBanner()}
+   <div class="card"><button class="btn" id="genPlan">✨ Générer / régénérer ma semaine</button><span class="muted" style="margin-left:10px">${planning.updated?("MàJ "+new Date(planning.updated).toLocaleString("fr-FR")):""}</span></div>
+   ${p?`<div class="card" style="border-left:4px solid var(--gold)"><h2>🔧 Imprévu ? Adapte ta semaine</h2><p class="muted" style="margin:-6px 0 8px">Décris ce qui change. L'IA réadapte le planning et les objectifs en conséquence.</p><textarea id="planEvent" placeholder="ex. Genou douloureux 3 jours, déplacement pro mardi-mercredi, mal dormi cette semaine, plus de temps ce week-end…"></textarea><div style="margin-top:10px"><button class="btn" id="adaptPlan">🔄 Adapter mon planning</button></div>${planning.note?`<div class="formatted" style="margin-top:12px;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px"><b>Dernier ajustement :</b> ${esc(planning.note)}</div>`:""}</div>`:""}
+   ${p?renderPlanning(p):'<div class="card"><span class="muted">Aucun planning. Génère ta semaine à partir de ton programme.</span></div>'}`;
+  $("#genPlan").onclick=genPlanning;const ap=$("#adaptPlan");if(ap)ap.onclick=adaptPlanning;bindPlanInfos();
+}
+function renderPlanning(p){
+  let html="";
+  (p.jours||[]).forEach((j,ji)=>{
+    html+=`<div class="card"><h2>${esc(j.jour||"")}</h2>`;
+    (j.items||[]).forEach((it,ii)=>{
+      const pil=PILLARS[it.pilier]||{label:esc(it.pilier||""),color:"var(--grey)"};
+      html+=`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b>
+          <span style="flex:1">${esc(it.titre||"")}</span>
+          <span class="pill" style="background:${pil.color}">${pil.label}</span>
+          <button class="ghost sm" data-info="j${ji}i${ii}">ℹ️</button>
+        </div>
+        <div id="infoj${ji}i${ii}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${it.pourquoi?("<b>Pourquoi :</b> "+esc(it.pourquoi)+"<br>"):""}${it.comment?("<b>Comment :</b> "+esc(it.comment)):""}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  });
+  if((p.recettes||[]).length){
+    html+=`<div class="card"><h2>🍽️ Recettes</h2>`;
+    p.recettes.forEach((r,ri)=>{
+      html+=`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="flex:1">${esc(r.nom||"")}</span><button class="ghost sm" data-info="r${ri}">ℹ️ Recette</button></div>
+        <div id="infor${ri}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${(r.ingredients&&r.ingredients.length)?("<b>Ingrédients :</b> "+esc(r.ingredients.join(", "))+"<br>"):""}${(r.etapes&&r.etapes.length)?("<b>Préparation :</b> "+esc(r.etapes.join(" "))+"<br>"):""}${r.pourquoi?("<b>Pourquoi :</b> "+esc(r.pourquoi)):""}</div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+  return html;
+}
+function bindPlanInfos(){document.querySelectorAll('[data-info]').forEach(b=>b.onclick=()=>{const d=$("#info"+b.dataset.info);if(d)d.style.display=(d.style.display==="none"?"block":"none");});}
+async function genPlanning(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  if(!program.text)return toast("Génère d'abord ton programme.");
+  const btn=$("#genPlan");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Génération...';}
+  try{
+    const sys=`Tu es Kalos. À partir du PROFIL, du PROGRAMME, de la NUTRITION et de la SALLE, crée un PLANNING HEBDOMADAIRE réaliste, jour par jour (Lundi à Dimanche), avec des HORAIRES adaptés à une vie d'entrepreneur plutôt sédentaire. Chaque action a un "pourquoi" (le bénéfice) et un "comment" (consigne concrète). Ajoute 4 à 6 recettes simples, corses/méditerranéennes, dans le budget.
+Réponds UNIQUEMENT par un JSON valide, sans aucun texte autour :
+{"jours":[{"jour":"Lundi","items":[{"h":"07:00","titre":"...","pilier":"sante|esprit|culture|art|travail|relations","pourquoi":"...","comment":"..."}]}],"recettes":[{"nom":"...","ingredients":["..."],"etapes":["..."],"pourquoi":"..."}]}
+Limite-toi à 4 items essentiels par jour et à 4 recettes. Les champs "pourquoi" et "comment" : très courts (max 8 mots chacun). `+SCI;
+    const ctx="PROFIL:\n"+(profile.text||"-")+"\n\nPROGRAMME:\n"+(program.text||"-")+(nutrition.advice?("\n\nNUTRITION:\n"+nutrition.advice):"")+(salle.analysis?("\n\nSALLE:\n"+salle.analysis):"");
+    const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"planning",maxTokens:6000});
+    const data=extractJSONobj(r.text);
+    if(!data||!data.jours)throw new Error("Réponse non exploitable, réessaie.");
+    planning={data,updated:Date.now()};save("planning",planning);toast("Planning généré ✓");
+  }catch(e){toast(e.message);}finally{render();}
+}
+async function applyPlanningChange(ev){
+  if(!planning.data)throw new Error("Pas de planning à modifier.");
+  const sys=`Tu adaptes un PLANNING HEBDOMADAIRE existant suite à une DEMANDE ou un IMPRÉVU. Réorganise jours et horaires en conséquence (déplacer, ajouter, réduire, maladie, blessure, déplacement, fatigue, plus/moins de temps...). Ajuste l'intensité et les OBJECTIFS si besoin (alternative sûre — surtout dos, genoux, asthme).
+Réponds UNIQUEMENT par un JSON valide, sans texte autour :
+{"note":"résumé court des changements + impact objectifs","jours":[{"jour":"Lundi","items":[{"h":"07:00","titre":"...","pilier":"sante|esprit|culture|art|travail|relations","pourquoi":"max 8 mots","comment":"max 8 mots"}]}]}
+Maximum 4 items par jour. N'inclus PAS de recettes. `+SCI;
+  const slim={jours:(planning.data.jours||[]).map(j=>({jour:j.jour,items:(j.items||[]).map(it=>({h:it.h,titre:it.titre,pilier:it.pilier}))}))};
+  const ctx="PROFIL (contraintes) :\n"+String(profile.text||"-").slice(0,1200)+"\n\nPLANNING ACTUEL (allégé) :\n"+JSON.stringify(slim)+"\n\nDEMANDE :\n"+ev;
+  const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"adapter planning"});
+  const data=extractJSONobj(r.text);
+  if(!data||!data.jours)throw new Error("Réponse non exploitable, réessaie.");
+  planning={data:{jours:data.jours,recettes:(planning.data.recettes||[])},updated:Date.now(),note:data.note||""};
+  save("planning",planning);
+  return planning.note;
+}
+async function adaptPlanning(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  if(!planning.data)return toast("Génère d'abord un planning.");
+  const ev=($("#planEvent").value||"").trim();
+  if(!ev)return toast("Décris ton imprévu d'abord.");
+  const btn=$("#adaptPlan");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Adaptation...';}
+  try{await applyPlanningChange(ev);toast("Planning adapté ✓");}catch(e){toast(e.message);}finally{render();}
+}
+function rCouts(){
+  const tot=costs.reduce((a,c)=>a+c.usd,0),tIn=costs.reduce((a,c)=>a+c.inTok,0),tOut=costs.reduce((a,c)=>a+c.outTok,0),n=costs.length,avg=n?tot/n:0;
+  const days={};costs.forEach(c=>{days[new Date(c.ts).toISOString().slice(0,10)]=1;});const dayCount=Object.keys(days).length||1,projMonth=tot/dayCount*30;
+  $("#main").innerHTML=`<h1 class="page">💸 Coûts</h1><p class="sub">Le cœur de ton test : combien coûte réellement un utilisateur.</p>
+   <div class="card"><div class="stat"><div class="box"><b>${USD(tot)}</b><span>Total · ${EUR(tot)}</span></div><div class="box"><b>${n}</b><span>Appels IA</span></div><div class="box"><b>${USD(avg)}</b><span>Moyen / appel</span></div><div class="box"><b>${EUR(projMonth)}</b><span>Projection / mois</span></div></div>
+   <p class="muted" style="margin-top:10px">${(tIn/1000).toFixed(1)}k tok entrée · ${(tOut/1000).toFixed(1)}k tok sortie · ${dayCount} jour(s).</p><button class="ghost sm" id="clrCost" style="margin-top:6px">Réinitialiser</button></div>
+   <div class="card"><h2>Détail</h2><div style="overflow-x:auto">${renderCosts()}</div></div>`;
+  $("#clrCost").onclick=()=>{if(confirm("Réinitialiser le compteur ?")){costs=[];save("costs",costs);render();}};
+}
+function renderCosts(){if(!costs.length)return '<span class="muted">Aucun appel IA.</span>';return `<table><tr><th>Quand</th><th>Action</th><th>Modèle</th><th>in</th><th>out</th><th>Coût</th></tr>${costs.slice().reverse().slice(0,60).map(c=>`<tr><td>${new Date(c.ts).toLocaleString("fr-FR")}</td><td>${esc(c.label)}</td><td>${esc(c.model)}</td><td>${c.inTok}</td><td>${c.outTok}</td><td>${USD(c.usd)}</td></tr>`).join("")}</table>`;}
+
+function rReglages(){
+  const opts=(sel)=>MODELS[S.provider].map(m=>`<option value="${m.id}" ${m.id===sel?"selected":""}>${m.name} — ${m.in}$/${m.out}$ /M</option>`).join("");
+  $("#main").innerHTML=`<h1 class="page">⚙️ Réglages</h1><p class="sub">Branche ta clé API et choisis tes modèles. Tout reste en local sur ton appareil.</p>
+   <div class="card"><h2>Fournisseur & clé</h2>
+     <div class="row"><div><label>Fournisseur</label><select id="provSel"><option value="google" ${S.provider==="google"?"selected":""}>Google (Gemini)</option><option value="openai" ${S.provider==="openai"?"selected":""}>OpenAI (GPT)</option><option value="anthropic" ${S.provider==="anthropic"?"selected":""}>Anthropic (Claude)</option></select></div>
+     <div><label>Clé API (locale)</label><input id="keyIn" type="password" value="${esc(S.apiKey)}" placeholder="colle ta clé"></div></div>
+     <div class="row"><div><label>Modèle « éco » (quotidien)</label><select id="cheapSel">${opts(S.cheap)}</select></div><div><label>Modèle « puissant » (programme/analyse)</label><select id="powerSel">${opts(S.power)}</select></div></div>
+     <div class="row"><div style="max-width:220px"><label>Versement mensuel coffre (€)</label><input id="monthIn" type="number" value="${S.monthly}"></div><div style="max-width:220px"><label>Taux $→€</label><input id="eurIn" type="number" step="0.01" value="${S.eur}"></div></div>
+     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="saveSet">💾 Enregistrer</button><button class="ghost" id="testKey">🔌 Tester la clé</button></div></div>
+   <div class="card"><h2>Obtenir une clé</h2><p class="muted">Gemini : <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> · OpenAI : <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a> · Claude : <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></p><p class="muted">Astuce coût : « éco » sur Gemini Flash-Lite pour le quotidien, « puissant » réservé au programme et à l'analyse.</p></div>
+   <div class="card"><h2>Données — transférer entre appareils</h2><p class="muted" style="margin:-6px 0 10px">Exporte depuis un appareil (ex. ton téléphone), puis importe le fichier sur l'autre (ex. ton PC) pour retrouver tout ton contenu.</p><button class="ghost sm" id="exportData">⬇︎ Exporter (JSON)</button> <button class="ghost sm" id="importData">⬆︎ Importer (JSON)</button> <button class="ghost sm" id="logoutBtn">🚪 Se déconnecter</button> <button class="ghost sm" id="wipe" style="color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button></div>`;
+  $("#provSel").onchange=e=>{S.provider=e.target.value;S.cheap=MODELS[S.provider][0].id;S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;save("settings",S);render();};
+  $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;save("settings",S);toast("Enregistré ✓");};
+  $("#testKey").onclick=async()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;save("settings",S);if(!S.apiKey)return toast("Colle une clé.");const b=$("#testKey");b.disabled=true;b.innerHTML='<span class="spin"></span>';try{await callAI({system:"Réponds: OK.",messages:[{role:"user",text:"dis OK"}],modelId:S.cheap,label:"test"});toast("Clé OK ✓");}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent="🔌 Tester la clé";}};
+  $("#exportData").onclick=()=>{const dump={};["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>dump[k]=load(k));const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kalos-donnees.json";a.click();};
+  $("#importData").onclick=()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json,.json";inp.onchange=()=>{const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>{if(d[k]!==undefined)localStorage.setItem(K(k),JSON.stringify(d[k]));});toast("Import réussi ✓ rechargement...");setTimeout(()=>location.reload(),700);}catch(e){toast("Fichier invalide");}};rd.readAsText(f);};inp.click();};
+  $("#wipe").onclick=()=>{if(confirm("Tout effacer ? Irréversible.")){["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>localStorage.removeItem(K(k)));location.reload();}};
+  const _lb=$("#logoutBtn");if(_lb)_lb.onclick=doLogout;
+}
+
+document.addEventListener("click",e=>{const d=e.target.closest("[data-del]");if(d){const i=+d.dataset.del;tracking.splice(i,1);save("tracking",tracking);render();}});
+document.addEventListener("click",e=>{const n=e.target.closest("[data-nav]");if(n){navTo(n.dataset.nav);}});
+document.addEventListener("click",e=>{const d=e.target.closest("[data-delmeal]");if(d){const i=+d.dataset.delmeal;if(nutrition.meals){nutrition.meals.splice(i,1);save("nutrition",nutrition);render();}}});
+if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}
+
+/* ===================== COMPTES & SYNCHRO (Supabase) ===================== */
+const SB_URL="https://vwxwagotympjzoztjltv.supabase.co";
+const SB_KEY="sb_publishable_Ce5qJsMMujnEijotMu0zkw_YpeVDDKN";
+const ALLKEYS=["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"];
+let sb=null; try{ if(window.supabase) sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
+let currentUser=null, cloudTimer=null;
+function reloadState(){S=load("settings");profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");}
+function showAuth(msg){const o=$("#authOverlay");if(o){o.style.display="flex";if(msg!==undefined)$("#authMsg").textContent=msg;}}
+function hideAuth(){const o=$("#authOverlay");if(o)o.style.display="none";}
+function startApp(){hideAuth();buildNav();refreshLevel();render();}
+async function cloudLoad(){try{const{data,error}=await sb.from("kalos_state").select("data").eq("user_id",currentUser.id).maybeSingle();if(error)return null;return data?data.data:null;}catch(e){return null;}}
+async function cloudSaveNow(){if(!currentUser||!sb)return;const snap={};ALLKEYS.forEach(k=>snap[k]=load(k));try{await sb.from("kalos_state").upsert({user_id:currentUser.id,data:snap,updated_at:new Date().toISOString()});}catch(e){}}
+function cloudSave(){if(!currentUser||!sb)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(cloudSaveNow,1200);}
+async function afterLogin(session){
+  currentUser=session.user;
+  const cloud=await cloudLoad();
+  if(cloud&&Object.keys(cloud).length){ ALLKEYS.forEach(k=>{ if(cloud[k]!==undefined) localStorage.setItem(K(k),JSON.stringify(cloud[k])); }); }
+  else { await cloudSaveNow(); } /* 1re connexion : on rattache les données locales (téléphone) au compte */
+  reloadState(); startApp();
+}
+async function doLogin(){const e=($("#authEmail").value||"").trim(),p=$("#authPass").value||"";if(!e||!p){$("#authMsg").textContent="Email + mot de passe requis.";return;}$("#authMsg").textContent="Connexion…";const{data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){$("#authMsg").textContent="Erreur : "+error.message;return;}afterLogin(data.session);}
+async function doSignup(){const e=($("#authEmail").value||"").trim(),p=$("#authPass").value||"";if(!e||!p){$("#authMsg").textContent="Email + mot de passe requis.";return;}if(p.length<6){$("#authMsg").textContent="Mot de passe : 6 caractères minimum.";return;}$("#authMsg").textContent="Création du compte…";const{data,error}=await sb.auth.signUp({email:e,password:p});if(error){$("#authMsg").textContent="Erreur : "+error.message;return;}if(data.session){afterLogin(data.session);}else{$("#authMsg").textContent="Compte créé ✓ Confirme ton email puis clique « Se connecter ».";}}
+async function doLogout(){try{await cloudSaveNow();await sb.auth.signOut();}catch(e){}currentUser=null;location.reload();}
+async function boot(){
+  loadContext();
+  if(!sb){ startApp(); return; } /* hors-ligne / Supabase indispo : mode local */
+  const lo=$("#authLogin"),su=$("#authSignup");if(lo)lo.onclick=doLogin;if(su)su.onclick=doSignup;
+  let session=null; try{ session=(await sb.auth.getSession()).data.session; }catch(e){}
+  if(session) afterLogin(session); else showAuth("");
+}
+boot();
+</script>
+</body>
+</html>
