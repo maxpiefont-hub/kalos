@@ -175,7 +175,7 @@ const DEFAULTS={
 };
 const K=(k)=>"kalos_"+k;
 function load(k){try{const v=localStorage.getItem(K(k));return v?JSON.parse(v):structuredClone(DEFAULTS[k]);}catch(e){return structuredClone(DEFAULTS[k]);}}
-function save(k,v){try{localStorage.setItem(K(k),JSON.stringify(v));}catch(e){toast("Stockage plein — exporte/efface des photos.");}cloudSave();}
+function save(k,v){try{localStorage.setItem(K(k),JSON.stringify(v));localStorage.setItem("kalos__chg",String(Date.now()));}catch(e){toast("Stockage plein — exporte/efface des photos.");}cloudSave();}
 let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat");
 const $=(s,el=document)=>el.querySelector(s);
 const esc=(t)=>(t||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -632,6 +632,43 @@ function trackingSummary(){
   const en=tracking.filter(t=>t.ener).slice(0,7).map(t=>+t.ener);if(en.length)lines.push("Énergie moyenne récente: "+(en.reduce((a,b)=>a+b,0)/en.length).toFixed(1)+"/10");
   return lines.join("\n");
 }
+const METRICS=[
+ {k:"poids",label:"Poids",unit:"kg"},
+ {k:"somMin",label:"Sommeil",unit:"",fmt:hm},
+ {k:"qsom",label:"Qualité sommeil",unit:"/10"},
+ {k:"ener",label:"Énergie",unit:"/10"},
+ {k:"mood",label:"Humeur",unit:"/10"},
+ {k:"taille",label:"Tour de taille",unit:"cm"},
+ {k:"hanch",label:"Hanches",unit:"cm"},
+ {k:"poit",label:"Poitrine",unit:"cm"},
+ {k:"bras",label:"Bras",unit:"cm"},
+ {k:"cuis",label:"Cuisse",unit:"cm"},
+ {k:"mol",label:"Mollet",unit:"cm"}
+];
+let chartMetric="poids", chartOn=false;
+function chartChipStyle(on){return "border:1px solid "+(on?"#0e5fae":"#cdd8e3")+";background:"+(on?"#0e5fae":"#fff")+";color:"+(on?"#fff":"#33485c")+";border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer;font-weight:"+(on?"600":"500")+";";}
+function chartPoints(mk){return tracking.filter(t=>t[mk]!==undefined&&t[mk]!==null&&t[mk]!=="").map(t=>({d:t.date,v:+t[mk]})).filter(p=>!isNaN(p.v)).sort((a,b)=>a.d<b.d?-1:(a.d>b.d?1:0));}
+function fmtVal(m,v){return m.fmt?m.fmt(Math.round(v)):((Math.round(v*10)/10)+(m.unit?(" "+m.unit):""));}
+function svgChart(m){
+  const pts=chartPoints(m.k);
+  if(pts.length<2)return '<p class="muted">Ajoute au moins 2 mesures de « '+esc(m.label.toLowerCase())+' » (à des dates différentes) pour afficher la courbe.</p>';
+  const W=620,H=230,pl=46,pr=14,pt=14,pb=30,iw=W-pl-pr,ih=H-pt-pb;
+  const vs=pts.map(p=>p.v);let mn=Math.min(...vs),mx=Math.max(...vs);if(mn===mx){mn-=1;mx+=1;}const pad=(mx-mn)*0.1;mn-=pad;mx+=pad;
+  const X=i=>pl+(pts.length===1?iw/2:iw*i/(pts.length-1));
+  const Y=v=>pt+ih-ih*(v-mn)/(mx-mn);
+  let grid="";for(let g=0;g<=4;g++){const v=mn+(mx-mn)*g/4,y=Y(v);grid+='<line x1="'+pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-pr)+'" y2="'+y.toFixed(1)+'" stroke="#e6eef7" stroke-width="1"/><text x="'+(pl-6)+'" y="'+(y+3).toFixed(1)+'" text-anchor="end" font-size="10" fill="#7c8a99">'+(m.fmt?m.fmt(Math.round(v)):(Math.round(v*10)/10))+'</text>';}
+  const line=pts.map((p,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(p.v).toFixed(1)).join(" ");
+  const area=line+" L"+X(pts.length-1).toFixed(1)+" "+(pt+ih)+" L"+X(0).toFixed(1)+" "+(pt+ih)+" Z";
+  const dots=pts.map((p,i)=>'<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(p.v).toFixed(1)+'" r="3" fill="#0e5fae"><title>'+esc(p.d)+" : "+esc(fmtVal(m,p.v))+'</title></circle>').join("");
+  const xi=[...new Set([0,Math.floor((pts.length-1)/2),pts.length-1])];
+  const xl=xi.map(i=>'<text x="'+X(i).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle" font-size="10" fill="#7c8a99">'+esc(pts[i].d.slice(5))+'</text>').join("");
+  const first=pts[0].v,last=pts[pts.length-1].v,delta=last-first,sign=delta>0?"+":(delta<0?"−":"");
+  const better=(m.k==="poids"||m.k==="taille"||m.k==="hanch")?(delta<0):(delta>0);
+  const col=delta===0?"#7c8a99":(better?"#1a8f4c":"#c0563a");
+  return '<svg viewBox="0 0 '+W+" "+H+'" width="100%" style="max-width:100%;height:auto;display:block;font-family:system-ui,sans-serif" role="img" aria-label="Courbe '+esc(m.label)+'">'+grid+'<path d="'+area+'" fill="#0e5fae" opacity="0.08"/><path d="'+line+'" fill="none" stroke="#0e5fae" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'+dots+xl+'</svg>'+
+  '<p class="muted" style="margin-top:6px;font-size:13px">'+pts.length+' mesures · de <b>'+esc(fmtVal(m,first))+'</b> à <b>'+esc(fmtVal(m,last))+'</b> · variation <b style="color:'+col+'">'+sign+esc(fmtVal(m,Math.abs(delta)))+'</b></p>';
+}
+function drawChart(){const box=$("#chartBox");if(!box)return;const m=METRICS.find(x=>x.k===chartMetric)||METRICS[0];box.innerHTML=svgChart(m);const cc=$("#chartChips");if(cc)cc.querySelectorAll("[data-m]").forEach(b=>b.style.cssText=chartChipStyle(b.dataset.m===chartMetric));}
 function rSuivi(){
   $("#main").innerHTML=`<h1 class="page">📏 Suivi</h1><p class="sub">Pas seulement le poids. Note ton sommeil, tes mensurations, ton énergie et tes photos.</p>
    <div class="card"><h2>Nouvelle mesure</h2>
@@ -656,11 +693,21 @@ function rSuivi(){
        <b>Cuisse :</b> au plus large, juste sous le pli des fessiers. &nbsp;<b>Mollet :</b> au plus large.<br><br>
        <b>À quelle fréquence :</b> sommeil + énergie chaque jour ; mensurations 1×/semaine ; photos 1×/mois (même lumière, même pose, 3 angles : face, profil, dos).
      </div></div>
+   <div class="card"><h2>📈 Courbes d'évolution</h2>
+     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="checkbox" id="chartToggle"${chartOn?" checked":""}> Afficher les courbes d'évolution</label>
+     <div id="chartWrap" style="display:${chartOn?"block":"none"};margin-top:12px">
+       <div id="chartChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${METRICS.map(m=>`<button type="button" data-m="${m.k}" style="${chartChipStyle(m.k===chartMetric)}">${m.label}</button>`).join("")}</div>
+       <div id="chartBox"></div>
+     </div></div>
    <div class="card"><h2>Historique</h2><div style="overflow-x:auto">${renderTracking()}</div></div>`;
   const upd=()=>{const d=sleepDur($("#tCouch").value,$("#tReve").value);$("#tSomCalc").value=d!=null?hm(d):"";};
   $("#tCouch").oninput=upd;$("#tReve").oninput=upd;
   $("#suiviPhoto").onclick=async()=>{const im=await pickImage(600);if(im){suiviPending=im;$("#suiviPrev").innerHTML=`<div class="imgprev"><img src="${im.dataUrl}"><span>Photo jointe</span><button class="ghost sm" id="rmSu" style="margin-left:auto">✕</button></div>`;$("#rmSu").onclick=()=>{suiviPending=null;$("#suiviPrev").innerHTML="";};}};
   $("#addT").onclick=()=>{const couch=$("#tCouch").value,reve=$("#tReve").value;const row={date:$("#tDate").value,poids:$("#tPoids").value,couch,reve,somMin:sleepDur(couch,reve),qsom:$("#tQsom").value,ener:$("#tEner").value,mood:$("#tMood").value,taille:$("#tTaille").value,hanch:$("#tHanch").value,poit:$("#tPoit").value,bras:$("#tBras").value,cuis:$("#tCuis").value,mol:$("#tMol").value,note:$("#tNote").value,photo:suiviPending?suiviPending.dataUrl:null};if(!row.date)return toast("Mets une date.");tracking.unshift(row);save("tracking",tracking);suiviPending=null;toast("Mesure enregistrée ✓");render();};
+  const cw=$("#chartWrap"),ct=$("#chartToggle");
+  if(ct)ct.onchange=()=>{chartOn=ct.checked;if(cw)cw.style.display=chartOn?"block":"none";if(chartOn)drawChart();};
+  const cc=$("#chartChips");if(cc)cc.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{chartMetric=b.dataset.m;drawChart();});
+  if(chartOn)drawChart();
 }
 function renderTracking(){if(!tracking.length)return '<span class="muted">Aucune mesure.</span>';return `<table><tr><th>Date</th><th>Poids</th><th>Sommeil</th><th>Taille</th><th>Hanch.</th><th>Poitr.</th><th>Bras</th><th>Cuisse</th><th>Mol.</th><th>Én.</th><th>Note</th><th>Photo</th><th></th></tr>${tracking.map((t,i)=>`<tr><td>${esc(t.date)}</td><td>${esc(t.poids||"-")}</td><td>${t.somMin!=null&&t.somMin!==""?hm(t.somMin):"-"}${t.couch&&t.reve?`<br><span class="muted" style="font-size:11px">${esc(t.couch)}→${esc(t.reve)}</span>`:""}</td><td>${esc(t.taille||"-")}</td><td>${esc(t.hanch||"-")}</td><td>${esc(t.poit||"-")}</td><td>${esc(t.bras||"-")}</td><td>${esc(t.cuis||"-")}</td><td>${esc(t.mol||"-")}</td><td>${esc(t.ener||"-")}</td><td>${esc(t.note||"")}</td><td>${t.photo?`<img src="${t.photo}" class="thumb" style="max-width:54px;max-height:54px">`:"-"}</td><td><button class="btn sm ghost" data-del="${i}">✕</button></td></tr>`).join("")}</table>`;}
 
@@ -789,14 +836,35 @@ function reloadState(){S=load("settings");profile=load("profile");program=load("
 function showAuth(msg){const o=$("#authOverlay");if(o){o.style.display="flex";if(msg!==undefined)$("#authMsg").textContent=msg;}}
 function hideAuth(){const o=$("#authOverlay");if(o)o.style.display="none";}
 function startApp(){hideAuth();buildNav();refreshLevel();render();}
-async function cloudLoad(){try{const{data,error}=await sb.from("kalos_state").select("data").eq("user_id",currentUser.id).maybeSingle();if(error)return null;return data?data.data:null;}catch(e){return null;}}
-async function cloudSaveNow(){if(!currentUser||!sb)return;const snap={};ALLKEYS.forEach(k=>snap[k]=load(k));try{await sb.from("kalos_state").upsert({user_id:currentUser.id,data:snap,updated_at:new Date().toISOString()});}catch(e){}}
+function localChg(){return +localStorage.getItem("kalos__chg")||0;}
+function syncedChg(){return +localStorage.getItem("kalos__synced")||0;}
+function migrateChg(){
+  if(localStorage.getItem("kalos__chg")!=null)return; /* déjà sur le nouveau système */
+  let hasData=false;
+  try{
+    const tr=load("tracking");if(Array.isArray(tr)&&tr.length)hasData=true;
+    const pr=load("profile");if(pr&&pr.text)hasData=true;
+    const pg=load("program");if(pg&&pg.text)hasData=true;
+    const ch=load("chat");if(Array.isArray(ch)&&ch.length)hasData=true;
+  }catch(e){}
+  /* appareil avec données existantes → marqué « à pousser » ; appareil vide → reste à 0 (recevra le cloud) */
+  if(hasData)localStorage.setItem("kalos__chg",String(Date.now()));
+}
+async function cloudLoad(){try{const{data,error}=await sb.from("kalos_state").select("data").eq("user_id",currentUser.id).maybeSingle();if(error){console.warn("cloudLoad",error);return null;}return data?data.data:null;}catch(e){console.warn("cloudLoad",e);return null;}}
+async function cloudSaveNow(){if(!currentUser||!sb)return;clearTimeout(cloudTimer);const chg=localChg();const snap={__chg:chg};ALLKEYS.forEach(k=>snap[k]=load(k));try{const{error}=await sb.from("kalos_state").upsert({user_id:currentUser.id,data:snap,updated_at:new Date().toISOString()});if(error){console.warn("cloudSave",error);toast("⚠️ Synchro cloud échouée — données gardées sur l'appareil.");}else{localStorage.setItem("kalos__synced",String(chg));}}catch(e){console.warn("cloudSave",e);toast("⚠️ Synchro cloud échouée — données gardées sur l'appareil.");}}
 function cloudSave(){if(!currentUser||!sb)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(cloudSaveNow,1200);}
+function flushCloud(){if(currentUser&&sb&&localChg()>syncedChg())cloudSaveNow();}
 async function afterLogin(session){
   currentUser=session.user;
   const cloud=await cloudLoad();
-  if(cloud&&Object.keys(cloud).length){ ALLKEYS.forEach(k=>{ if(cloud[k]!==undefined) localStorage.setItem(K(k),JSON.stringify(cloud[k])); }); }
-  else { await cloudSaveNow(); } /* 1re connexion : on rattache les données locales (téléphone) au compte */
+  const lc=localChg();
+  if(cloud&&Object.keys(cloud).length){
+    const cc=+cloud.__chg||0;
+    if(cc>=lc){ /* le cloud est aussi récent ou plus récent : on charge */
+      ALLKEYS.forEach(k=>{ if(cloud[k]!==undefined) localStorage.setItem(K(k),JSON.stringify(cloud[k])); });
+      localStorage.setItem("kalos__chg",String(cc)); localStorage.setItem("kalos__synced",String(cc));
+    } else { await cloudSaveNow(); } /* le local a des modifs non synchronisées : on POUSSE au lieu d'écraser */
+  } else { await cloudSaveNow(); } /* 1re connexion : on rattache les données locales au compte */
   reloadState(); startApp();
 }
 async function doLogin(){const e=($("#authEmail").value||"").trim(),p=$("#authPass").value||"";if(!e||!p){$("#authMsg").textContent="Email + mot de passe requis.";return;}$("#authMsg").textContent="Connexion…";const{data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){$("#authMsg").textContent="Erreur : "+error.message;return;}afterLogin(data.session);}
@@ -804,11 +872,14 @@ async function doSignup(){const e=($("#authEmail").value||"").trim(),p=$("#authP
 async function doLogout(){try{await cloudSaveNow();await sb.auth.signOut();}catch(e){}currentUser=null;location.reload();}
 async function boot(){
   loadContext();
+  migrateChg();
   if(!sb){ startApp(); return; } /* hors-ligne / Supabase indispo : mode local */
   const lo=$("#authLogin"),su=$("#authSignup");if(lo)lo.onclick=doLogin;if(su)su.onclick=doSignup;
   let session=null; try{ session=(await sb.auth.getSession()).data.session; }catch(e){}
   if(session) afterLogin(session); else showAuth("");
 }
+document.addEventListener("visibilitychange",()=>{if(document.hidden)flushCloud();});
+window.addEventListener("pagehide",flushCloud);
 boot();
 </script>
 </body>
