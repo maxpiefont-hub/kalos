@@ -82,7 +82,7 @@
   .stat .box b{font-size:21px;display:block;color:var(--accent-d)}
   .stat .box span{font-size:12px;color:var(--grey)}
   .banner{background:#fff7e6;border:1px solid #f0d896;border-radius:11px;padding:12px 14px;font-size:13px;margin-bottom:16px;color:#7a5c1a}
-  .toast{position:fixed;left:50%;bottom:calc(22px + var(--safe-bot));transform:translateX(-50%);background:var(--accent-d);color:#fff;padding:11px 18px;border-radius:24px;opacity:0;transition:.3s;pointer-events:none;z-index:50;box-shadow:0 6px 18px rgba(0,0,0,.2);max-width:90%;text-align:center}
+  .toast{position:fixed;left:50%;bottom:calc(22px + var(--safe-bot));transform:translateX(-50%);background:var(--accent-d);color:#fff;padding:11px 18px;border-radius:24px;opacity:0;transition:.3s;pointer-events:none;z-index:220;box-shadow:0 6px 18px rgba(0,0,0,.2);max-width:90%;text-align:center}
   .toast.show{opacity:1}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
   @keyframes s{to{transform:rotate(360deg)}}
@@ -122,6 +122,32 @@
     h1.page{font-size:21px}
     .msg{max-width:90%}
   }
+  /* ===== Barre « Où tu en es ? » (pilote global) ===== */
+  .momentFab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + var(--safe-bot));z-index:55;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:10px 16px 10px 18px;box-shadow:0 6px 22px rgba(14,95,174,.18);cursor:pointer;max-width:calc(100% - 28px);width:460px;color:var(--grey);font-size:14px}
+  .momentFab:hover{border-color:var(--accent)}
+  .momentFab .mfic{font-size:18px}
+  .momentFab .mftxt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .momentFab .mfgo{background:var(--accent);color:#fff;border-radius:999px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+  @media(max-width:780px){.momentFab{bottom:calc(70px + var(--safe-bot));width:auto;left:12px;right:12px;transform:none}.main{padding-bottom:150px}.toast{bottom:calc(132px + var(--safe-bot))}}
+  @media(min-width:781px){.main{padding-bottom:96px}}
+  #momentSheet{position:fixed;inset:0;background:rgba(8,30,55,.45);display:none;align-items:flex-end;justify-content:center;z-index:70}
+  #momentSheet .ms-sheet{background:#fff;width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + var(--safe-bot));max-height:86vh;display:flex;flex-direction:column}
+  .ms-head{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;color:var(--accent-d)}
+  .ms-head .ms-x{margin-left:auto;background:none;border:0;font-size:20px;color:var(--grey);cursor:pointer;line-height:1}
+  .ms-sub{color:var(--grey);font-size:12.5px;margin:4px 0 12px}
+  .ms-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:9px;min-height:60px}
+  .ms-msg{max-width:88%;padding:10px 13px;border-radius:13px;white-space:pre-wrap;font-size:14px;line-height:1.5}
+  .ms-msg.ai{background:var(--accent-l);align-self:flex-start;border-bottom-left-radius:3px}
+  .ms-msg.me{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:3px}
+  .ms-opts{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+  .ms-opt{text-align:left;background:#fff;border:1.5px solid var(--accent);color:var(--accent-d);border-radius:12px;padding:12px 14px;font:inherit;font-weight:600;cursor:pointer;display:flex;gap:9px;align-items:center}
+  .ms-opt:hover{background:var(--accent-l)}
+  .ms-opt .oi{font-size:16px;flex:none}
+  .ms-bar{display:flex;gap:8px;align-items:flex-end;margin-top:12px}
+  .ms-bar textarea{flex:1;min-height:46px;max-height:120px;padding:11px;border:1px solid var(--line);border-radius:12px;font:inherit;resize:none}
+  .ms-send{background:var(--accent);color:#fff;border:0;border-radius:12px;padding:0 16px;height:46px;font:inherit;font-weight:600;cursor:pointer;flex:none}
+  .ms-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .ms-chip{background:var(--accent-l);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--accent-d);cursor:pointer}
 </style>
 </head>
 <body>
@@ -140,6 +166,16 @@
 </div>
 <nav class="bottomnav" id="bnav"></nav>
 <div id="plusMenu"></div>
+<div class="momentFab" id="momentFab"><span class="mfic">🧭</span><span class="mftxt">Où tu en es ? Dis ton moment…</span><span class="mfgo">→</span></div>
+<div id="momentSheet">
+  <div class="ms-sheet">
+    <div class="ms-head">🧭 Où tu en es ?<button class="ms-x" id="msClose">✕</button></div>
+    <div class="ms-sub">Donne ton moment (« j'ai fini chez mon oncle, il est 13 h, je pensais pas finir si tôt »). Kalos te propose 2-3 façons d'enchaîner et réécrit le reste de ta journée.</div>
+    <div class="ms-body" id="msBody"></div>
+    <div class="ms-chips" id="msChips"></div>
+    <div class="ms-bar"><textarea id="msIn" placeholder="ex. fini plus tôt, fatigué, il me reste 2 h…"></textarea><button class="ms-send" id="msSend">Envoyer</button></div>
+  </div>
+</div>
 <div id="authOverlay" style="position:fixed;inset:0;background:linear-gradient(180deg,#0a4683,#0e5fae);display:none;align-items:center;justify-content:center;z-index:100;padding:20px">
   <div style="background:#fff;border-radius:16px;max-width:380px;width:100%;padding:24px;box-shadow:0 12px 44px rgba(0,0,0,.35)">
     <div style="font-size:30px;font-weight:800;color:var(--accent);text-align:center;letter-spacing:1px">KALOS</div>
@@ -286,7 +322,7 @@ function rAccueil(){
   const ci=(checkin.date===todayStr())?checkin.mood:"";
   let next;
   if(!S.apiKey) next={t:"Branche l'IA pour démarrer",go:"reglages"};
-  else if(!profile.text) next={t:"Créer mon plan (3 min)",go:"demarrage"};
+  else if(!profile.text) next={t:"Faire connaissance avec Kalos",go:"decouverte"};
   else if(!program.text) next={t:"Génère ton programme de vie",go:"programme"};
   else if(!planning.data) next={t:"Génère ta semaine (planning)",go:"calendrier"};
   else next={t:"Fais tes quêtes du jour",go:"quetes"};
@@ -338,8 +374,8 @@ function rOnboarding(){
   const jours=["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
   $("#main").innerHTML=`<h1 class="page">✨ Créons ton plan</h1><p class="sub">Quelques réponses rapides — Kalos prépare un plan personnalisé et tes actions du jour. Tu règles tes dispos une seule fois.</p>${keyBanner()}
    <div class="card">
-     <label>Ton objectif principal</label>
-     <select id="obObj"><option>Perdre du gras et prendre du muscle</option><option>Perdre du gras</option><option>Prendre du muscle</option><option>Plus d'énergie et de forme</option><option>Être plus discipliné et équilibré</option></select>
+     <label>Tes objectifs <span class="muted" style="font-weight:400">(un ou plusieurs)</span></label>
+     <div style="display:flex;flex-wrap:wrap;gap:9px;margin-top:4px">${["Perdre du gras","Prendre du muscle","Plus d'énergie et de forme","Être plus discipliné et équilibré","Meilleur sommeil","Réduire tabac / alcool"].map((o,i)=>`<label style="display:flex;align-items:center;gap:7px;font-weight:400;color:var(--ink);margin:0;background:var(--accent-l);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer"><input type="checkbox" class="obObj" value="${o}"${i<2?" checked":""} style="width:18px;height:18px;flex:none"> ${o}</label>`).join("")}</div>
      <label>Ton niveau actuel</label>
      <select id="obNiv"><option>Débutant</option><option selected>Intermédiaire</option><option>Avancé</option></select>
      <label>Quels jours peux-tu bouger ? (tes dispos)</label>
@@ -355,12 +391,13 @@ function rOnboarding(){
      <div style="margin-top:14px"><button class="btn" id="obGo" style="width:100%">✨ Créer mon plan</button></div>
      <p class="muted" id="obStatus" style="text-align:center;margin-top:10px;font-size:13px"></p>
    </div>
-   <div class="card"><p class="muted" style="margin:0;font-size:13px">Tu pourras tout affiner ensuite. Kalos apprendra à mieux te connaître au fil du temps (tes goûts, ce qui marche pour toi) pour adapter tes journées automatiquement.</p></div>`;
+   <div class="card"><p class="muted" style="margin:0 0 10px;font-size:13px">Tu pourras tout affiner ensuite. Kalos apprendra à mieux te connaître au fil du temps pour adapter tes journées automatiquement.</p><button class="ghost sm" id="obToCoach">🧭 Je préfère discuter avec Kalos</button></div>`;
   $("#obGo").onclick=creerMonPlan;
+  const _otc=$("#obToCoach");if(_otc)_otc.onclick=()=>navTo("decouverte");
 }
 async function creerMonPlan(){
-  if(!S.apiKey)return toast("Branche ta clé (Réglages).");
-  const obj=$("#obObj").value,niv=$("#obNiv").value,temps=$("#obTemps").value;
+  if(!S.apiKey){const s=$("#obStatus");if(s)s.innerHTML='⚠️ Aucune clé IA active. Va dans <b>⚙️ Réglages</b>, colle ta clé Gemini, clique « 🔌 Tester la clé » (tu dois voir « Clé OK ✓ ») puis « 💾 Enregistrer ».';return toast("Branche ta clé (Réglages).");}
+  const obj=[...document.querySelectorAll(".obObj:checked")].map(c=>c.value).join(", ")||"Être en meilleure forme générale",niv=$("#obNiv").value,temps=$("#obTemps").value;
   const jours=[...document.querySelectorAll(".obJour:checked")].map(c=>c.value);
   const sante=($("#obSante").value||"").trim(),gouts=($("#obGouts").value||"").trim(),bloc=($("#obBloc").value||"").trim();
   const reponses="Objectif: "+obj+"\nNiveau: "+niv+"\nJours dispo pour bouger: "+(jours.join(", ")||"non précisé")+"\nTemps type par séance: "+temps+"\nContraintes santé: "+(sante||"-")+"\nGoûts (aime / n'aime pas): "+(gouts||"-")+"\nCe qui a bloqué avant: "+(bloc||"-");
@@ -396,20 +433,26 @@ Commence par une phrase d'accueil + ta première question + la ligne OPTIONS.`;
 const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
 let pendingImgs=[];
 function rDecouverte(){
-  $("#main").innerHTML=`<h1 class="page">🧭 Découverte</h1><p class="sub">L'IA apprend qui tu es. Tu peux joindre des photos avec une légende.</p>${keyBanner()}
+  $("#main").innerHTML=`<h1 class="page">🧭 Coach</h1><p class="sub">Kalos apprend à te connaître <b>petit à petit</b>, au fil de la conversation. Réponds quand tu veux — pas besoin de tout dire d'un coup. Dès que tu lui as donné quelques infos, crée ton plan.</p>${keyBanner()}
    <div class="card"><div class="chat" id="chat"></div><div id="quickReplies" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div><div id="prevWrap"></div>
      <div class="chatbar"><button class="iconbtn" id="photoBtn" title="Joindre une photo">📷</button>
        <textarea id="chatIn" placeholder="Écris ta réponse (ou une légende pour ta photo)..."></textarea>
        <button class="btn" id="sendBtn">Envoyer</button></div>
+     <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:13px">
+       <button class="btn" id="coachPlan" style="width:100%">✨ Créer / mettre à jour mon plan</button>
+       <p class="muted" id="coachPlanStatus" style="text-align:center;margin:8px 0 0;font-size:13px"></p></div>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-       <button class="ghost sm" id="startBtn">▶︎ Démarrer / relancer</button>
-       <button class="ghost sm" id="genProfileBtn">🪪 Mettre à jour mon profil</button>
+       <button class="ghost sm" id="startBtn">▶︎ Relancer la discussion</button>
+       <button class="ghost sm" id="genProfileBtn">🪪 Mettre à jour le profil</button>
+       <button class="ghost sm" id="toForm">📝 Plutôt un court formulaire</button>
        <button class="ghost sm" id="clearChat">🗑 Effacer</button></div></div>`;
   drawChat();drawPrev();
-  $("#startBtn").onclick=startDiscovery;$("#sendBtn").onclick=sendDiscovery;$("#genProfileBtn").onclick=genProfile;
+  $("#startBtn").onclick=startDiscovery;$("#sendBtn").onclick=sendDiscovery;$("#genProfileBtn").onclick=genProfile;$("#coachPlan").onclick=coachCreerPlan;
+  $("#toForm").onclick=()=>navTo("demarrage");
   $("#photoBtn").onclick=async()=>{const ims=await pickImages();if(ims.length){pendingImgs=pendingImgs.concat(ims);drawPrev();}};
   $("#clearChat").onclick=()=>{if(confirm("Effacer la conversation ?")){chat=[];save("chat",chat);drawChat();}};
   $("#chatIn").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendDiscovery();}});
+  if(!chat.length&&S.apiKey)startDiscovery();
 }
 function drawPrev(){const w=$("#prevWrap");if(!w)return;if(!pendingImgs.length){w.innerHTML="";return;}w.innerHTML=`<div class="imgprev">${pendingImgs.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${pendingImgs.length} photo(s) prête(s)</span><button class="ghost sm" id="rmImg" style="margin-left:auto">✕</button></div>`;$("#rmImg").onclick=()=>{pendingImgs=[];drawPrev();};}
 function parseOptions(t){t=t||"";const m=t.match(/OPTIONS:\s*(.+)\s*$/im);const options=m?m[1].split("|").map(s=>s.trim()).filter(Boolean).slice(0,4):[];const clean=t.replace(/\n?\s*OPTIONS:.*$/im,"").replace(/\n?\s*ACTION:.*$/im,"").trim();return{clean,options};}
@@ -438,6 +481,31 @@ async function genProfile(){
     const r=await callAI({system:sys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION RÉCENTE:\n"+conv}],modelId:S.cheap,label:"profil"});
     profile={text:r.text,updated:Date.now()};save("profile",profile);toast("Profil généré ✓");current="profil";buildNav();render();
   }catch(e){toast(e.message);}finally{if(b){b.disabled=false;b.textContent="🪪 Mettre à jour mon profil";}}
+}
+
+async function coachCreerPlan(){
+  if(!S.apiKey)return toast("Branche ta clé (Réglages).");
+  if(chat.length<2)return toast("Échange 2-3 messages avec Kalos d'abord 🙂");
+  const btn=$("#coachPlan");if(btn)btn.disabled=true;
+  const st=$("#coachPlanStatus");const set=(m)=>{if(st)st.textContent=m;};
+  try{
+    set("1/3 · Je mets à jour ton profil…");
+    const conv=chat.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n");
+    const psys="Tu construis/METS À JOUR une FICHE DE PROFIL à partir d'une CONVERSATION (et d'une fiche existante parfois vide). Fiche CONCISE et structurée (français), sections : Identité & contexte, Santé & contraintes, Habitudes, Envies & valeurs, Ambitions, Disponibilités, Notes pour le coaching. Fusionne sans doublon, ~1 page. Travaille avec ce que tu as, même partiel — ne réclame rien. Renvoie la fiche COMPLÈTE. "+SCI;
+    let r=await callAI({system:psys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION:\n"+conv}],modelId:S.cheap,label:"profil"});
+    profile={text:r.text,updated:Date.now()};save("profile",profile);
+    set("2/3 · Je construis ton programme…");
+    const gsys=`Tu es Kalos (kalokagathia). À partir du PROFIL (parfois encore léger), construis un PROGRAMME DE VIE personnalisé et durable, structuré en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations), avec 1 objectif clair + 2 à 4 actions concrètes par pilier, adapté aux dispos et aux goûts connus. Réaliste et progressif ; commence simple si l'info manque. `+SCI;
+    r=await callAI({system:gsys,messages:[{role:"user",text:"PROFIL:\n"+profile.text}],modelId:S.power,label:"programme",maxTokens:6000});
+    program={text:r.text,updated:Date.now()};save("program",program);
+    set("3/3 · Je prépare tes actions du jour…");
+    const qsys='À partir du PROGRAMME, propose 3 à 5 QUÊTES concrètes réalisables AUJOURD\'HUI. Réponds UNIQUEMENT par un tableau JSON : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25.';
+    r=await callAI({system:qsys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes",maxTokens:1200});
+    const arr=extractJSON(r.text)||[];
+    quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
+    save("quests",quests);
+    toast("Ton plan est prêt ✓");navTo("accueil");
+  }catch(e){toast(e.message);set("");if(btn)btn.disabled=false;}
 }
 
 function rProfil(){
@@ -825,6 +893,85 @@ document.addEventListener("click",e=>{const d=e.target.closest("[data-del]");if(
 document.addEventListener("click",e=>{const n=e.target.closest("[data-nav]");if(n){navTo(n.dataset.nav);}});
 document.addEventListener("click",e=>{const d=e.target.closest("[data-delmeal]");if(d){const i=+d.dataset.delmeal;if(nutrition.meals){nutrition.meals.splice(i,1);save("nutrition",nutrition);render();}}});
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}
+
+/* ===================== BARRE « OÙ TU EN ES ? » (pilote global) ===================== */
+function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
+const JOURS_FR=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+function todayJourName(){return JOURS_FR[new Date().getDay()];}
+function todayJourObj(){if(!planning.data||!planning.data.jours)return null;const n=todayJourName().toLowerCase();return planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===n)||null;}
+let momentMsgs=[];
+function openMoment(){const s=$("#momentSheet");if(!s)return;s.style.display="flex";msRender();setTimeout(()=>{const i=$("#msIn");if(i)i.focus();},80);}
+function closeMoment(){const s=$("#momentSheet");if(s)s.style.display="none";}
+function msRender(){
+  const b=$("#msBody"),chips=$("#msChips");if(!b)return;
+  if(!momentMsgs.length){b.innerHTML='<div class="ms-msg ai">Dis-moi où tu en es, là, maintenant — ce que tu viens de faire, ton énergie, le temps qu\'il te reste. Je te propose comment enchaîner. 🌿</div>';if(chips)chips.innerHTML="";return;}
+  b.innerHTML=momentMsgs.map(m=>`<div class="ms-msg ${m.role==="user"?"me":"ai"}">${esc(m.text)}</div>`).join("");
+  const last=momentMsgs[momentMsgs.length-1];
+  if(chips){
+    if(last&&last.role==="assistant"&&last.options&&last.options.length){
+      const L=["A","B","C","D"];
+      chips.innerHTML=`<div class="ms-opts">${last.options.map((o,i)=>`<button class="ms-opt" data-opt="${i}"><span class="oi">${L[i]||"▶"}</span><span>${esc(o)}</span></button>`).join("")}</div>`;
+      chips.querySelectorAll("[data-opt]").forEach(btn=>btn.onclick=()=>momentApply(last.options[+btn.dataset.opt]));
+    } else { chips.innerHTML=""; }
+  }
+  b.scrollTop=b.scrollHeight;
+}
+async function momentSend(){
+  if(!S.apiKey)return toast("Branche l'IA (Réglages).");
+  const i=$("#msIn");const t=(i.value||"").trim();if(!t)return;
+  momentMsgs.push({role:"user",text:t});i.value="";msRender();
+  const btn=$("#msSend");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
+  try{
+    const sys=`Tu es Kalos, coach de vie (kalokagathia). L'utilisateur te donne une info BRUTE sur son moment présent (ce qu'il vient de faire/finir, son énergie, le temps restant). À partir du CONTEXTE (heure, saison, météo, planning du jour) et de son PROFIL, propose 2 ou 3 façons CONCRÈTES et DIFFÉRENTES d'enchaîner le RESTE de sa journée à partir de maintenant. Chaque option combine 1 à 3 activités cohérentes avec ses 6 piliers, ses contraintes (dos, genoux, asthme) et ses goûts. Chaleureux, jamais culpabilisant.
+Réponds par UNE phrase d'accroche courte, PUIS termine EXACTEMENT par :
+OPTIONS: option 1 | option 2 | option 3
+Chaque option = max ~12 mots, actionnable. Rien après la ligne OPTIONS. `+SCI;
+    const prof=profile.text?("\n\nPROFIL:\n"+profile.text.slice(0,1500)):"";
+    const conv=momentMsgs.map(m=>({role:m.role==="user"?"user":"assistant",text:m.text}));
+    const r=await callAI({system:sys+prof,messages:conv,modelId:S.cheap,label:"moment"});
+    const o=parseOptions(r.text);
+    momentMsgs.push({role:"assistant",text:o.clean||"Voici comment tu peux enchaîner :",options:o.options});
+    msRender();
+  }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="Envoyer";}}
+}
+async function momentApply(optText){
+  if(!S.apiKey)return toast("Branche l'IA (Réglages).");
+  momentMsgs.push({role:"user",text:"➡️ "+optText});msRender();
+  const chips=$("#msChips");if(chips)chips.innerHTML='<div class="ms-msg ai" style="max-width:100%"><span class="spin"></span> Je réécris le reste de ta journée…</div>';
+  try{
+    const now=nowHM();
+    const jour=todayJourObj();
+    const past=jour?(jour.items||[]).filter(it=>String(it.h||"00:00")<now):[];
+    const slimPast=past.map(it=>({h:it.h,titre:it.titre,pilier:it.pilier}));
+    const sys=`Tu adaptes le PLANNING d'AUJOURD'HUI après le choix de l'utilisateur. On te donne l'HEURE actuelle, ce qui est DÉJÀ PASSÉ aujourd'hui (ne pas répéter), l'OPTION choisie et le PROFIL (contraintes). Construis le RESTE de la journée à partir de l'heure actuelle jusqu'au soir, horaires réalistes, cohérent avec l'option, les 6 piliers et les contraintes (dos, genoux, asthme).
+Réponds UNIQUEMENT par un JSON valide, sans texte autour :
+{"note":"résumé court et chaleureux du reste de la journée","items":[{"h":"HH:MM","titre":"...","pilier":"sante|esprit|culture|art|travail|relations","pourquoi":"max 8 mots","comment":"max 8 mots"}]}
+items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items max. `+SCI;
+    const ctx="HEURE ACTUELLE: "+now+"\n\nDÉJÀ FAIT AUJOURD'HUI:\n"+(slimPast.length?JSON.stringify(slimPast):"(rien noté)")+"\n\nOPTION CHOISIE:\n"+optText+"\n\nPROFIL (contraintes):\n"+String(profile.text||"-").slice(0,1200);
+    const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"moment-apply"});
+    const data=extractJSONobj(r.text);
+    if(!data||!Array.isArray(data.items))throw new Error("Réponse non exploitable, réessaie.");
+    const newItems=data.items.map(it=>({h:String(it.h||now),titre:String(it.titre||"").trim(),pilier:(PILLARS[it.pilier]?it.pilier:"sante"),pourquoi:it.pourquoi||"",comment:it.comment||""}));
+    const merged=past.concat(newItems).sort((a,b)=>String(a.h)<String(b.h)?-1:(String(a.h)>String(b.h)?1:0));
+    if(!planning.data)planning.data={jours:[],recettes:[]};
+    if(!planning.data.jours)planning.data.jours=[];
+    const jn=todayJourName();
+    let jo=planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===jn.toLowerCase());
+    if(jo)jo.items=merged;else planning.data.jours.push({jour:jn,items:merged});
+    planning.updated=Date.now();planning.note=data.note||"";
+    save("planning",planning);
+    momentMsgs.push({role:"assistant",text:"✓ "+(data.note||"C'est réorganisé.")+"\n\nTon planning et ton Accueil sont à jour."});
+    msRender();toast("Journée réorganisée ✓");
+    if(typeof render==="function"&&document.getElementById("main"))render();
+  }catch(e){toast(e.message);momentMsgs.push({role:"assistant",text:"Hmm, je n'ai pas réussi à réécrire — réessaie en reformulant."});msRender();}
+}
+(function(){
+  const fab=$("#momentFab");if(fab)fab.onclick=openMoment;
+  const c=$("#msClose");if(c)c.onclick=closeMoment;
+  const sd=$("#msSend");if(sd)sd.onclick=momentSend;
+  const sheet=$("#momentSheet");if(sheet)sheet.onclick=(e)=>{if(e.target===sheet)closeMoment();};
+  const inp=$("#msIn");if(inp)inp.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();momentSend();}});
+})();
 
 /* ===================== COMPTES & SYNCHRO (Supabase) ===================== */
 const SB_URL="https://vwxwagotympjzoztjltv.supabase.co";
