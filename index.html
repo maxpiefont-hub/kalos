@@ -749,6 +749,15 @@ function rSuivi(){
      <label>Note / ressenti</label><input id="tNote" placeholder="ex. bonne séance dos, jambes lourdes...">
      <div id="suiviPrev" style="margin-top:10px"></div>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="suiviPhoto">📷 Photo</button><button class="btn" id="addT">+ Enregistrer</button></div></div>
+   <div class="card"><h2>🌙 Sommeil automatique</h2>
+     <p class="muted" style="margin:-4px 0 10px;font-size:13.5px">Le soir, appuie sur « Je me couche » juste avant de poser ton téléphone. Au réveil, à la première ouverture de Kalos, ton temps de sommeil est calculé et proposé tout seul — plus besoin de saisir les heures.</p>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+       <button class="btn" id="goBed">🌙 Je me couche maintenant</button>
+       <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" id="swToggle"> Détection auto au réveil</label>
+     </div>
+     <p class="muted" id="swState" style="margin:10px 0 0;font-size:12.5px"></p>
+     <p class="muted" style="margin:8px 0 0;font-size:11.5px">ℹ️ Kalos est une appli web : l'auto fonctionne quand c'est la dernière appli ouverte le soir et la première le matin. Le bouton « Je me couche » la rend fiable à coup sûr.</p>
+   </div>
    <div class="card"><h2>📐 Comment et quand prendre tes mesures</h2>
      <div class="formatted" style="font-size:13.5px">
        <b>Quand :</b> le matin, à jeun, après être allé aux toilettes, avant de boire ou manger — pour des chiffres comparables d'une fois à l'autre.<br>
@@ -776,6 +785,9 @@ function rSuivi(){
   if(ct)ct.onchange=()=>{chartOn=ct.checked;if(cw)cw.style.display=chartOn?"block":"none";if(chartOn)drawChart();};
   const cc=$("#chartChips");if(cc)cc.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{chartMetric=b.dataset.m;drawChart();});
   if(chartOn)drawChart();
+  const tog=$("#swToggle");if(tog){tog.checked=swEnabled();tog.onchange=()=>{swSet("enabled",tog.checked?"1":"0");refreshSwState();};}
+  const gb=$("#goBed");if(gb)gb.onclick=()=>{goToBed();refreshSwState();};
+  refreshSwState();
 }
 function renderTracking(){if(!tracking.length)return '<span class="muted">Aucune mesure.</span>';return `<table><tr><th>Date</th><th>Poids</th><th>Sommeil</th><th>Taille</th><th>Hanch.</th><th>Poitr.</th><th>Bras</th><th>Cuisse</th><th>Mol.</th><th>Én.</th><th>Note</th><th>Photo</th><th></th></tr>${tracking.map((t,i)=>`<tr><td>${esc(t.date)}</td><td>${esc(t.poids||"-")}</td><td>${t.somMin!=null&&t.somMin!==""?hm(t.somMin):"-"}${t.couch&&t.reve?`<br><span class="muted" style="font-size:11px">${esc(t.couch)}→${esc(t.reve)}</span>`:""}</td><td>${esc(t.taille||"-")}</td><td>${esc(t.hanch||"-")}</td><td>${esc(t.poit||"-")}</td><td>${esc(t.bras||"-")}</td><td>${esc(t.cuis||"-")}</td><td>${esc(t.mol||"-")}</td><td>${esc(t.ener||"-")}</td><td>${esc(t.note||"")}</td><td>${t.photo?`<img src="${t.photo}" class="thumb" style="max-width:54px;max-height:54px">`:"-"}</td><td><button class="btn sm ghost" data-del="${i}">✕</button></td></tr>`).join("")}</table>`;}
 
@@ -1025,8 +1037,79 @@ async function boot(){
   let session=null; try{ session=(await sb.auth.getSession()).data.session; }catch(e){}
   if(session) afterLogin(session); else showAuth("");
 }
-document.addEventListener("visibilitychange",()=>{if(document.hidden)flushCloud();});
-window.addEventListener("pagehide",flushCloud);
+/* ===== Sommeil automatique (détection coucher/réveil) ===== */
+const pad2=n=>String(n).padStart(2,"0");
+function swGet(k){try{return localStorage.getItem("kalos_sw_"+k);}catch(e){return null;}}
+function swSet(k,v){try{localStorage.setItem("kalos_sw_"+k,v);}catch(e){}}
+function swDel(k){try{localStorage.removeItem("kalos_sw_"+k);}catch(e){}}
+function swEnabled(){return swGet("enabled")!=="0";}
+function swClearBed(){swDel("bedAt");swDel("bedManual");}
+function goToBed(){swSet("bedAt",String(Date.now()));swSet("bedManual","1");swDel("handledWake");toast("Bonne nuit 🌙 Kalos calculera ton sommeil au réveil.");}
+function swStateText(){
+  if(!swEnabled())return "Détection désactivée.";
+  const bed=+swGet("bedAt")||0;
+  if(bed){const d=new Date(bed);return "💤 Coucher noté à "+pad2(d.getHours())+":"+pad2(d.getMinutes())+(swGet("bedManual")==="1"?" (toi)":" (auto)")+". Calcul au réveil.";}
+  return "Aucun coucher en attente. Appuie sur « Je me couche » ce soir, ou laisse l'auto faire si Kalos est ta dernière appli ouverte.";
+}
+function refreshSwState(){const el=$("#swState");if(el)el.textContent=swStateText();}
+function recordSleep(date,couch,reve){
+  const somMin=sleepDur(couch,reve);
+  let row=tracking.find(t=>t.date===date);
+  if(row){row.couch=couch;row.reve=reve;row.somMin=somMin;}
+  else{tracking.unshift({date,poids:"",couch,reve,somMin,qsom:"",ener:"",mood:"",taille:"",hanch:"",poit:"",bras:"",cuis:"",mol:"",note:"",photo:null});}
+  save("tracking",tracking);
+}
+function proposeSleep(couch,reve){
+  const ex=$("#sleepAsk");if(ex)ex.remove();
+  const somMin=sleepDur(couch,reve);
+  const ov=document.createElement("div");
+  ov.id="sleepAsk";
+  ov.style.cssText="position:fixed;inset:0;z-index:300;background:rgba(10,30,50,.45);display:flex;align-items:center;justify-content:center;padding:18px";
+  ov.innerHTML=`<div style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:30px;text-align:center">🌙&nbsp;→&nbsp;☀️</div>
+    <h2 style="margin:8px 0 4px;text-align:center;font-size:18px">Bien dormi ?</h2>
+    <p style="text-align:center;color:#5b6b7a;margin:0 0 16px;font-size:14px">On dirait que tu as dormi de <b>${couch}</b> à <b>${reve}</b>.<br>Soit <b style="color:#0e5fae">${hm(somMin)}</b> de sommeil.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn" id="slkOk">✅ Oui, enregistrer</button>
+      <button class="btn ghost" id="slkEdit">✏️ Ajuster les heures</button>
+      <button class="ghost sm" id="slkNo" style="align-self:center">Ce n'était pas un sommeil</button>
+    </div>
+    <p style="text-align:center;color:#9aa7b4;margin:14px 0 0;font-size:11px">Détection auto · tu peux la couper dans Suivi.</p>
+  </div>`;
+  document.body.appendChild(ov);
+  const close=()=>ov.remove();
+  $("#slkOk").onclick=()=>{recordSleep(todayStr(),couch,reve);close();toast("Sommeil enregistré ✓");if(current==="suivi")render();};
+  $("#slkEdit").onclick=()=>{close();navTo("suivi");setTimeout(()=>{const c=$("#tCouch"),r=$("#tReve");if(c){c.value=couch;c.dispatchEvent(new Event("input"));}if(r){r.value=reve;r.dispatchEvent(new Event("input"));}},150);};
+  $("#slkNo").onclick=close;
+  ov.onclick=(e)=>{if(e.target===ov)close();};
+}
+function sleepWatchHidden(){
+  if(!swEnabled())return;
+  if(swGet("bedManual")==="1")return;        // coucher manuel déjà posé : on n'écrase pas
+  const h=new Date().getHours();
+  if(h>=20||h<5)swSet("bedAt",String(Date.now())); // on ne mémorise que dans la fenêtre du soir/nuit
+}
+function sleepWatchVisible(){
+  if(!swEnabled())return;
+  const bed=+swGet("bedAt")||0;if(!bed)return;
+  const now=Date.now();const gapMin=Math.round((now-bed)/60000);
+  if(gapMin>16*60){swClearBed();return;}      // trop long : marqueur périmé
+  if(gapMin<150)return;                        // pas encore une vraie nuit : on garde le marqueur
+  const manual=swGet("bedManual")==="1";
+  const bedD=new Date(bed),wakeD=new Date(now);
+  const bedH=bedD.getHours(),wakeH=wakeD.getHours();
+  const windowOK=manual||((bedH>=20||bedH<5)&&(wakeH>=4&&wakeH<13));
+  if(!windowOK)return;
+  if(swGet("handledWake")===todayStr())return; // déjà proposé ce matin
+  const couch=pad2(bedD.getHours())+":"+pad2(bedD.getMinutes());
+  const reve=pad2(wakeD.getHours())+":"+pad2(wakeD.getMinutes());
+  swClearBed();swSet("handledWake",todayStr());
+  proposeSleep(couch,reve);
+}
+
+document.addEventListener("visibilitychange",()=>{if(document.hidden){flushCloud();sleepWatchHidden();}else{sleepWatchVisible();}});
+window.addEventListener("pagehide",()=>{flushCloud();sleepWatchHidden();});
+window.addEventListener("load",()=>{setTimeout(()=>{try{sleepWatchVisible();}catch(e){}},1600);});
 boot();
 </script>
 </body>
