@@ -128,7 +128,7 @@
   .momentFab .mfic{font-size:18px}
   .momentFab .mftxt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .momentFab .mfgo{background:var(--accent);color:#fff;border-radius:999px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
-  @media(max-width:780px){.momentFab{bottom:calc(70px + var(--safe-bot));width:auto;left:12px;right:12px;transform:none}.main{padding-bottom:150px}.toast{bottom:calc(132px + var(--safe-bot))}}
+  @media(max-width:780px){.momentFab{bottom:calc(54px + var(--safe-bot));width:auto;left:0;right:0;transform:none;border-radius:16px 16px 0 0;border:1px solid var(--line);border-bottom:0;box-shadow:0 -5px 16px rgba(14,95,174,.10);padding:12px 16px}.main{padding-bottom:150px}.toast{bottom:calc(128px + var(--safe-bot))}}
   @media(min-width:781px){.main{padding-bottom:96px}}
   #momentSheet{position:fixed;inset:0;background:rgba(8,30,55,.45);display:none;align-items:flex-end;justify-content:center;z-index:70}
   #momentSheet .ms-sheet{background:#fff;width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + var(--safe-bot));max-height:86vh;display:flex;flex-direction:column}
@@ -148,6 +148,18 @@
   .ms-send{background:var(--accent);color:#fff;border:0;border-radius:12px;padding:0 16px;height:46px;font:inherit;font-weight:600;cursor:pointer;flex:none}
   .ms-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
   .ms-chip{background:var(--accent-l);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--accent-d);cursor:pointer}
+  /* ===== Hiérarchie visuelle & Accueil ===== */
+  .card.hero{background:linear-gradient(135deg,var(--accent) 0%,var(--accent-d) 100%);border:0;color:#fff;box-shadow:0 10px 26px rgba(14,95,174,.30)}
+  .card.hero .eyebrow{font-size:11.5px;letter-spacing:.7px;text-transform:uppercase;opacity:.9;font-weight:600}
+  .card.soft{box-shadow:none;background:#fbfdff}
+  .btn.onhero{background:#fff;color:var(--accent-d)}
+  .btn.onhero:hover{background:#eef4fb}
+  .statline{display:flex;gap:9px;margin-bottom:16px}
+  .statline .b{flex:1;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px 13px;cursor:pointer;transition:.15s;min-width:0}
+  .statline .b:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(14,95,174,.10)}
+  .statline .b b{display:block;font-size:18px;color:var(--accent-d);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .statline .b span{font-size:11px;color:var(--grey)}
+  .statline .b.empty b{color:var(--accent);font-size:14px;font-weight:700}
 </style>
 </head>
 <body>
@@ -244,6 +256,19 @@ function renderWeather(){
   const w=weatherData;if(w.air==null&&w.mer==null&&w.mont==null)return "";
   return `<div class="card"><h2>🌤️ Météo — en direct</h2><div class="stat">${w.air!=null?`<div class="box"><b>${w.air}°C</b><span>🌡️ Air</span></div>`:""}${w.mer!=null?`<div class="box"><b>${w.mer}°C</b><span>🌊 Mer (nage)</span></div>`:""}${w.mont!=null?`<div class="box"><b>${w.mont}°C</b><span>⛰️ Altitude (rando)</span></div>`:""}</div><p class="muted" style="margin:10px 0 0;font-size:12px">D'après ta position. Kalos adapte selon l'activité : la mer pour la nage, l'altitude pour la rando.</p></div>`;
 }
+function renderWeatherCompact(){
+  const w=weatherData;if(w.air==null&&w.mer==null&&w.mont==null)return "";
+  const parts=[];if(w.air!=null)parts.push("🌡️ "+w.air+"°");if(w.mer!=null)parts.push("🌊 "+w.mer+"°");if(w.mont!=null)parts.push("⛰️ "+w.mont+"°");
+  return `<div class="card soft" style="padding:0;overflow:hidden">
+    <button id="wxToggle" style="background:none;border:0;width:100%;display:flex;align-items:center;gap:10px;cursor:pointer;font:inherit;color:var(--ink);padding:13px 16px;text-align:left">
+      <span style="font-size:15px">🌤️</span><span style="flex:1">Météo &nbsp;·&nbsp; ${parts.join("&nbsp;&nbsp; ")}</span><span class="muted" id="wxCaret" style="font-size:12px;white-space:nowrap">détails ▾</span>
+    </button>
+    <div id="wxBox" style="display:none;padding:0 16px 14px">
+      <div class="stat">${w.air!=null?`<div class="box"><b>${w.air}°C</b><span>🌡️ Air</span></div>`:""}${w.mer!=null?`<div class="box"><b>${w.mer}°C</b><span>🌊 Mer (nage)</span></div>`:""}${w.mont!=null?`<div class="box"><b>${w.mont}°C</b><span>⛰️ Altitude (rando)</span></div>`:""}</div>
+      <p class="muted" style="margin:10px 0 0;font-size:12px">D'après ta position. Kalos adapte selon l'activité : la mer pour la nage, l'altitude pour la rando.</p>
+    </div>
+  </div>`;
+}
 function nowContext(){
   const d=new Date();
   const date=d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
@@ -298,7 +323,7 @@ async function callAI({system,messages,modelId,label,maxTokens=3000}){
   save("costs",costs);return out;
 }
 
-const PAGES=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"decouverte",ic:"🧭",label:"Découverte"},{id:"profil",ic:"🪪",label:"Profil"},{id:"salle",ic:"🏋️",label:"Salle"},{id:"nutrition",ic:"🍽️",label:"Nutrition"},{id:"programme",ic:"📋",label:"Programme"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"quetes",ic:"⚔️",label:"Quêtes"},{id:"progression",ic:"📈",label:"Progrès"},{id:"coffre",ic:"🪙",label:"Coffre"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"couts",ic:"💸",label:"Coûts"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
+const PAGES=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"profil",ic:"🪪",label:"Profil"},{id:"salle",ic:"🏋️",label:"Salle"},{id:"nutrition",ic:"🍽️",label:"Nutrition"},{id:"programme",ic:"📋",label:"Programme"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"quetes",ic:"⚔️",label:"Quêtes"},{id:"progression",ic:"📈",label:"Progrès"},{id:"coffre",ic:"🪙",label:"Coffre"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"couts",ic:"💸",label:"Coûts"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
 let current="accueil";
 const CORE=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"__plus",ic:"⋯",label:"Plus"}];
 function navTo(id){current=id;buildNav();render();window.scrollTo(0,0);}
@@ -327,9 +352,12 @@ function rAccueil(){
   else if(!planning.data) next={t:"Génère ta semaine (planning)",go:"calendrier"};
   else next={t:"Fais tes quêtes du jour",go:"quetes"};
   $("#main").innerHTML=`<h1 class="page">🏠 Bonjour</h1><p class="sub">L'essentiel en un coup d'œil. Avance d'une étape à la fois — tout est relié.</p>${keyBanner()}
-   <div class="card" style="border-left:4px solid var(--accent)"><div style="font-size:13px;color:var(--grey)">Ta prochaine étape</div><div style="font-size:18px;font-weight:700;margin:4px 0 12px">${esc(next.t)}</div><button class="btn hub-cta" data-nav="${next.go}">Continuer →</button></div>
-   <div class="card"><div class="stat"><div class="box" data-nav="progression" style="cursor:pointer"><b>Niv. ${lvl}</b><span>${into}/${need} XP</span></div><div class="box" data-nav="suivi" style="cursor:pointer"><b>${lastT.poids?esc(lastT.poids)+" kg":"—"}</b><span>dernier poids</span></div><div class="box" data-nav="suivi" style="cursor:pointer"><b>${lastT.taille?esc(lastT.taille)+" cm":"—"}</b><span>tour de taille</span></div></div></div>
-   ${renderWeather()}
+   <div class="card hero"><div class="eyebrow">Ta prochaine étape</div><div style="font-size:21px;font-weight:800;margin:7px 0 15px;line-height:1.25">${esc(next.t)}</div><button class="btn onhero hub-cta" data-nav="${next.go}">Continuer →</button></div>
+   <div class="statline">
+     <div class="b" data-nav="progression"><b>Niv. ${lvl}</b><span>${into}/${need} XP</span></div>
+     <div class="b ${lastT.poids?"":"empty"}" data-nav="suivi">${lastT.poids?`<b>${esc(lastT.poids)} kg</b><span>dernier poids</span>`:`<b>+ Poids</b><span>1ʳᵉ mesure</span>`}</div>
+     <div class="b ${lastT.taille?"":"empty"}" data-nav="suivi">${lastT.taille?`<b>${esc(lastT.taille)} cm</b><span>tour de taille</span>`:`<b>+ Taille</b><span>1ʳᵉ mesure</span>`}</div>
+   </div>
    <div class="card"><h2>Ton check-in du jour</h2>
      <div style="font-size:13px;color:var(--grey);margin:-4px 0 8px">Comment te sens-tu ?</div>
      <div style="display:flex;gap:8px">
@@ -337,16 +365,14 @@ function rAccueil(){
        <button class="ghost sm moodb ${ci==="moyen"?"active":""}" data-mood="moyen" style="flex:1">😐 Moyen</button>
        <button class="ghost sm moodb ${ci==="bien"?"active":""}" data-mood="bien" style="flex:1">🙂 Bien</button>
      </div>
-     <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-       <button class="ghost sm" data-nav="calendrier">🔧 Un imprévu / moins de temps</button>
-     </div>
-     ${ci?`<p class="muted" style="margin:10px 0 0;font-size:12px">Check-in noté${ci==="bof"?" — pense à alléger ta journée (bouton imprévu).":ci==="bien"?" — profites-en pour avancer un peu plus !":"."}</p>`:""}
+     ${ci?`<p class="muted" style="margin:10px 0 0;font-size:12px">Check-in noté${ci==="bof"?" — pense à alléger ta journée.":ci==="bien"?" — profites-en pour avancer un peu plus !":"."}</p>`:""}
    </div>
    <div class="card"><h2>📅 Aujourd'hui — ${todayName}</h2>
      ${todayPlan.length?todayPlan.slice(0,6).map(it=>`<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)"><b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b><span>${esc(it.titre||"")}</span></div>`).join(""):'<span class="muted">Pas encore de planning généré.</span>'}
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Voir le planning</button><button class="ghost sm" data-nav="quetes">Quêtes du jour ${todayQ.length?("("+doneQ+"/"+todayQ.length+")"):""}</button></div>
    </div>
-   <div class="card"><h2>Comment Kalos t'aide</h2>
+   ${renderWeatherCompact()}
+   <div class="card soft"><h2>Comment Kalos t'aide</h2>
      <button class="ghost sm" id="howBtn">Voir le pourquoi (fondé sur la psychologie)</button>
      <div id="howBox" class="formatted" style="display:none;margin-top:10px;font-size:13.5px">
        <b>1. Une seule étape à la fois.</b> On s'engage mieux quand l'action suivante est claire et petite — l'effet des « petites victoires » sur la motivation (Amabile & Kramer, 2011).<br><br>
@@ -355,7 +381,7 @@ function rAccueil(){
        <b>4. La régularité prime sur la perfection.</b> Une habitude met ~66 jours en moyenne à s'ancrer, avec de la souplesse (Lally et al., 2010).
      </div>
    </div>
-   <div class="card"><h2>Tout est relié</h2><div class="shortcuts">
+   <div class="card soft"><h2>Tout est relié</h2><div class="shortcuts">
      <button data-nav="decouverte"><span class="ic">🧭</span>Coach</button>
      <button data-nav="profil"><span class="ic">🪪</span>Profil</button>
      <button data-nav="salle"><span class="ic">🏋️</span>Salle</button>
@@ -368,6 +394,7 @@ function rAccueil(){
    </div></div>`;
   const hb=$("#howBtn");if(hb)hb.onclick=()=>{const x=$("#howBox");x.style.display=x.style.display==="none"?"block":"none";};
   document.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{checkin={date:todayStr(),mood:b.dataset.mood};save("checkin",checkin);toast("Check-in noté ✓");render();});
+  const wx=$("#wxToggle");if(wx)wx.onclick=()=>{const b=$("#wxBox"),c=$("#wxCaret");const open=b.style.display!=="none";b.style.display=open?"none":"block";if(c)c.textContent=open?"détails ▾":"masquer ▴";};
 }
 
 function rOnboarding(){
