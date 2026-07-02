@@ -94,11 +94,11 @@
   .shortcuts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .shortcuts button{background:var(--accent-l);border:1px solid var(--line);border-radius:12px;padding:12px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--ink)}
   .shortcuts .ic{font-size:20px}
-  #plusMenu{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;z-index:60}
-  #plusMenu .plus-sheet{background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:16px;max-height:80vh;overflow:auto}
-  #plusMenu .plus-sheet h3{margin:0 0 10px}
-  #plusMenu .plus-sheet button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:13px 6px;font-size:15px;cursor:pointer;color:var(--ink)}
-  #plusMenu .plus-sheet .closep{text-align:center;color:var(--accent);font-weight:600;border-bottom:0;margin-top:6px}
+  .hubgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .hubtile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 14px;cursor:pointer;font:inherit;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;color:var(--ink);transition:.15s}
+  .hubtile:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(14,95,174,.10)}
+  .hubtile .hic{font-size:24px}
+  .hubtile b{font-size:15px}
   @media(max-width:780px){
     .nav{display:none!important}
     .bottomnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);padding:6px 2px calc(6px + var(--safe-bot));justify-content:space-around;box-shadow:0 -2px 10px rgba(0,0,0,.06)}
@@ -177,7 +177,6 @@
   <main class="main" id="main"></main>
 </div>
 <nav class="bottomnav" id="bnav"></nav>
-<div id="plusMenu"></div>
 <div class="momentFab" id="momentFab"><span class="mfic">🧭</span><span class="mftxt">Où tu en es ? Dis ton moment…</span><span class="mfgo">→</span></div>
 <div id="momentSheet">
   <div class="ms-sheet">
@@ -323,16 +322,36 @@ async function callAI({system,messages,modelId,label,maxTokens=3000}){
   save("costs",costs);return out;
 }
 
-const PAGES=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"profil",ic:"🪪",label:"Profil"},{id:"salle",ic:"🏋️",label:"Salle"},{id:"nutrition",ic:"🍽️",label:"Nutrition"},{id:"programme",ic:"📋",label:"Programme"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"quetes",ic:"⚔️",label:"Quêtes"},{id:"progression",ic:"📈",label:"Progrès"},{id:"coffre",ic:"🪙",label:"Coffre"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"couts",ic:"💸",label:"Coûts"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
+const NAV_MAIN=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"monplan",ic:"🎯",label:"Mon plan"},{id:"progression",ic:"📈",label:"Progrès"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
+const NAV_GROUP={monplan:["monplan","profil","programme","salle","nutrition"],progression:["progression","quetes","coffre"],reglages:["reglages","couts"],decouverte:["decouverte","demarrage"]};
 let current="accueil";
-const CORE=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"__plus",ic:"⋯",label:"Plus"}];
+const CORE=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"plus",ic:"⋯",label:"Plus"}];
+function navParent(id){for(const k in NAV_GROUP)if(NAV_GROUP[k].includes(id))return k;return id;}
 function navTo(id){current=id;buildNav();render();window.scrollTo(0,0);}
 function buildNav(){
-  const nav=$("#nav");if(nav){nav.innerHTML="";PAGES.forEach(p=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${p.ic}</span><span class="lbl">${p.label}</span>`;b.className=(p.id===current?"active":"");b.onclick=()=>navTo(p.id);nav.appendChild(b);});}
-  const bn=$("#bnav");if(bn){bn.innerHTML="";CORE.forEach(c=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${c.ic}</span><span>${c.label}</span>`;const act=(c.id===current)||(c.id==="__plus"&&!CORE.some(x=>x.id===current));b.className=act?"active":"";b.onclick=()=>{if(c.id==="__plus")openPlus();else navTo(c.id);};bn.appendChild(b);});}
+  const par=navParent(current);
+  const nav=$("#nav");if(nav){nav.innerHTML="";NAV_MAIN.forEach(p=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${p.ic}</span><span class="lbl">${p.label}</span>`;b.className=(p.id===par?"active":"");b.onclick=()=>navTo(p.id);nav.appendChild(b);});}
+  const bn=$("#bnav");if(bn){bn.innerHTML="";CORE.forEach(c=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${c.ic}</span><span>${c.label}</span>`;const act=(c.id===par)||(c.id==="plus"&&!CORE.some(x=>x.id===par));b.className=act?"active":"";b.onclick=()=>navTo(c.id);bn.appendChild(b);});}
 }
-function openPlus(){const m=$("#plusMenu");if(!m)return;const core=["accueil","calendrier","decouverte","suivi"];m.innerHTML=`<div class="plus-sheet"><h3>Plus</h3>${PAGES.filter(p=>!core.includes(p.id)).map(p=>`<button data-go="${p.id}">${p.ic} ${p.label}</button>`).join("")}<button class="closep" data-close="1">Fermer</button></div>`;m.style.display="flex";m.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{m.style.display="none";navTo(b.dataset.go);});m.querySelector("[data-close]").onclick=()=>m.style.display="none";m.onclick=(e)=>{if(e.target===m)m.style.display="none";};}
-function render(){({accueil:rAccueil,demarrage:rOnboarding,decouverte:rDecouverte,profil:rProfil,salle:rSalle,nutrition:rNutrition,programme:rProgramme,calendrier:rCalendrier,quetes:rQuetes,progression:rProgression,coffre:rCoffre,suivi:rSuivi,couts:rCouts,reglages:rReglages}[current])();}
+function rPlus(){
+  $("#main").innerHTML=`<h1 class="page">Plus</h1>
+   <div class="hubgrid">
+     <button class="hubtile" data-nav="monplan"><span class="hic">🎯</span><b>Mon plan</b><span class="muted" style="font-size:12px">Profil · Programme · Salle · Nutrition</span></button>
+     <button class="hubtile" data-nav="progression"><span class="hic">📈</span><b>Progrès</b><span class="muted" style="font-size:12px">Niveau · Quêtes · Coffre</span></button>
+     <button class="hubtile" data-nav="reglages"><span class="hic">⚙️</span><b>Réglages</b><span class="muted" style="font-size:12px">Clé IA · Données · Coûts</span></button>
+   </div>`;
+}
+function rMonPlan(){
+  const st=(ok,done,todo)=>ok?`<span class="muted" style="font-size:12px">${done}</span>`:`<span style="font-size:12px;color:var(--accent);font-weight:600">${todo}</span>`;
+  $("#main").innerHTML=`<h1 class="page">🎯 Mon plan</h1>
+   <div class="hubgrid">
+     <button class="hubtile" data-nav="profil"><span class="hic">🪪</span><b>Profil</b>${st(!!profile.text,"À jour","À créer")}</button>
+     <button class="hubtile" data-nav="programme"><span class="hic">📋</span><b>Programme</b>${st(!!program.text,"Généré","À générer")}</button>
+     <button class="hubtile" data-nav="salle"><span class="hic">🏋️</span><b>Salle</b>${st(!!salle.analysis,"Analysé","À analyser")}</button>
+     <button class="hubtile" data-nav="nutrition"><span class="hic">🍽️</span><b>Nutrition</b>${st(!!nutrition.advice,"Conseils prêts","À générer")}</button>
+   </div>`;
+}
+function render(){({accueil:rAccueil,demarrage:rOnboarding,decouverte:rDecouverte,profil:rProfil,salle:rSalle,nutrition:rNutrition,programme:rProgramme,calendrier:rCalendrier,quetes:rQuetes,progression:rProgression,coffre:rCoffre,suivi:rSuivi,couts:rCouts,reglages:rReglages,monplan:rMonPlan,plus:rPlus}[current])();}
 const keyBanner=()=>S.apiKey?"":`<div class="banner">⚠️ Aucune clé API. Va dans <b>⚙️ Réglages</b> pour brancher l'IA.</div>`;
 
 function rAccueil(){
@@ -366,7 +385,8 @@ function rAccueil(){
      </div>
      ${ci?`<p class="muted" style="margin:-4px 0 10px;font-size:12px">${ci==="bof"?"Noté — journée allégée conseillée.":ci==="bien"?"Noté — profites-en pour avancer !":"Noté."}</p>`:""}
      ${todayPlan.length?todayPlan.slice(0,6).map(it=>`<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)"><b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b><span>${esc(it.titre||"")}</span></div>`).join(""):'<span class="muted">Pas encore de planning.</span>'}
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Planning</button><button class="ghost sm" data-nav="quetes">Quêtes ${todayQ.length?("("+doneQ+"/"+todayQ.length+")"):""}</button></div>
+     <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><div style="font-size:13px;font-weight:600;color:var(--accent-d);margin-bottom:6px">⚔️ Quêtes du jour</div><div id="qList">${renderQuests()}</div></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Planning</button></div>
    </div>
    ${renderWeatherCompact()}
    <div class="card soft"><div class="shortcuts">
@@ -389,6 +409,8 @@ function rAccueil(){
    </div></div>`;
   const hb=$("#howBtn");if(hb)hb.onclick=()=>{const x=$("#howBox");x.style.display=x.style.display==="none"?"block":"none";};
   document.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{checkin={date:todayStr(),mood:b.dataset.mood};save("checkin",checkin);toast("Check-in noté ✓");render();});
+  bindQuests();
+  if(quests.date!==todayStr()&&S.apiKey&&program.text){const ql=$("#qList");if(ql)ql.innerHTML='<span class="muted">⚔️ Préparation des quêtes du jour…</span>';autoQuests();}
   const wx=$("#wxToggle");if(wx)wx.onclick=()=>{const b=$("#wxBox"),c=$("#wxCaret");const open=b.style.display!=="none";b.style.display=open?"none":"block";if(c)c.textContent=open?"détails ▾":"masquer ▴";};
 }
 
@@ -531,7 +553,7 @@ async function coachCreerPlan(){
 }
 
 function rProfil(){
-  $("#main").innerHTML=`<h1 class="page">🪪 Profil</h1><p class="sub">La fiche que l'IA construit sur toi — modifiable.</p>${keyBanner()}
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="monplan" style="margin-bottom:10px">← Mon plan</button><h1 class="page">🪪 Profil</h1><p class="sub">La fiche que l'IA construit sur toi — modifiable.</p>${keyBanner()}
    <div class="card"><textarea id="profTxt" style="min-height:320px">${esc(profile.text)}</textarea>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" id="saveProf">💾 Enregistrer</button>
      <span class="muted">${profile.updated?("MàJ "+new Date(profile.updated).toLocaleString("fr-FR")):"Aucun profil — passe par la Découverte."}</span></div></div>`;
@@ -540,7 +562,7 @@ function rProfil(){
 
 let sallePending=[];
 function rSalle(){
-  $("#main").innerHTML=`<h1 class="page">🏋️ Salle — mon programme</h1><p class="sub">Donne ton programme actuel (texte ou photo). L'IA l'analyse, propose des modifications et des objectifs.</p>${keyBanner()}
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="monplan" style="margin-bottom:10px">← Mon plan</button><h1 class="page">🏋️ Salle — mon programme</h1><p class="sub">Donne ton programme actuel (texte ou photo). L'IA l'analyse, propose des modifications et des objectifs.</p>${keyBanner()}
    <div class="card"><label>Ton programme actuel (séances, exercices, séries/répétitions...)</label>
      <textarea id="salleIn" placeholder="ex. Lundi pecs/triceps : développé couché 4x8...">${esc(salle.input)}</textarea>
      <div id="sallePrevWrap" style="margin-top:8px"></div>
@@ -602,7 +624,7 @@ Réponds UNIQUEMENT par un JSON valide, sans texte autour : {"plat":"nom court d
   }catch(e){toast(e.message);}finally{render();}
 }
 function rNutrition(){
-  $("#main").innerHTML=`<h1 class="page">🍽️ Nutrition</h1><p class="sub">Photographie tes repas pour estimer tes apports, et reçois des conseils adaptés à ton budget et ta région.</p>${keyBanner()}
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="monplan" style="margin-bottom:10px">← Mon plan</button><h1 class="page">🍽️ Nutrition</h1><p class="sub">Photographie tes repas pour estimer tes apports, et reçois des conseils adaptés à ton budget et ta région.</p>${keyBanner()}
    <div class="card" style="border-left:4px solid var(--accent)"><h2>📷 Analyser un repas en photo</h2>
      <p class="muted" style="margin:-6px 0 8px">Prends ton assiette en photo (+ une note si tu veux). L'IA estime calories, protéines, glucides, lipides. <i>Ce sont des estimations approximatives.</i></p>
      <div id="mealPrevWrap"></div>
@@ -632,7 +654,7 @@ async function genNutrition(){
   }catch(e){toast(e.message);}finally{if(b){b.disabled=false;b.textContent="🥗 Générer mes conseils nutrition";}}
 }
 function rProgramme(){
-  $("#main").innerHTML=`<h1 class="page">📋 Programme & style de vie</h1><p class="sub">Construit depuis ton profil, ta salle, ta nutrition et tes données de suivi, vers la kalokagathia.</p>${keyBanner()}
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="monplan" style="margin-bottom:10px">← Mon plan</button><h1 class="page">📋 Programme & style de vie</h1><p class="sub">Construit depuis ton profil, ta salle, ta nutrition et tes données de suivi, vers la kalokagathia.</p>${keyBanner()}
    <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="genProg">✨ Générer / régénérer</button><button class="ghost" id="adjProg">🔄 Ajuster selon mes données</button></div>
      <div class="muted" style="margin-top:8px">${program.updated?("Généré le "+new Date(program.updated).toLocaleString("fr-FR")):""}</div>
      <div class="formatted" id="progOut" style="margin-top:14px">${program.text?fmt(program.text):'<span class="muted">Aucun programme. Génère-le depuis ton profil.</span>'}</div></div>
@@ -667,17 +689,23 @@ ${SCI}`;
 
 function rQuetes(){
   const fresh=quests.date===todayStr();
-  $("#main").innerHTML=`<h1 class="page">⚔️ Quêtes du jour</h1><p class="sub">Tes actions concrètes. Chaque quête validée rapporte de l'XP.</p>${keyBanner()}
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="progression" style="margin-bottom:10px">← Progrès</button><h1 class="page">⚔️ Quêtes du jour</h1><p class="sub">Chaque quête validée rapporte de l'XP.</p>${keyBanner()}
    <div class="card"><button class="btn" id="genQ">🎲 ${fresh?"Régénérer":"Générer"} les quêtes</button><span class="muted" style="margin-left:10px">${quests.date?("Quêtes du "+quests.date):""}</span>
      <div id="qList" style="margin-top:16px">${renderQuests()}</div></div>`;
   $("#genQ").onclick=genQuests;bindQuests();
+  if(!fresh&&S.apiKey&&program.text){const ql=$("#qList");if(ql)ql.innerHTML='<span class="muted">⚔️ Préparation des quêtes du jour…</span>';autoQuests();}
 }
 function renderQuests(){if(!quests.items.length)return '<span class="muted">Génère tes quêtes depuis ton programme.</span>';
   return quests.items.map((q,i)=>{const p=PILLARS[q.pillar]||{label:q.pillar,color:"var(--grey)"};return `<div class="quest ${q.done?"done":""}"><input type="checkbox" data-i="${i}" ${q.done?"checked":""}><div><div>${esc(q.text)}</div><span class="pill" style="background:${p.color}">${p.label}</span></div><div class="q-x">+${q.xp} XP</div></div>`;}).join("");}
 function bindQuests(){document.querySelectorAll('#qList input[type=checkbox]').forEach(cb=>cb.onchange=()=>{const i=+cb.dataset.i,q=quests.items[i];if(cb.checked&&!q.done){q.done=true;addXp(q.pillar,q.xp);toast("+"+q.xp+" XP "+(PILLARS[q.pillar]?.label||""));}else if(!cb.checked&&q.done){q.done=false;addXp(q.pillar,-q.xp);}save("quests",quests);$("#qList").innerHTML=renderQuests();bindQuests();});}
+let _autoQBusy=false;
+async function autoQuests(){
+  if(_autoQBusy||quests.date===todayStr()||!S.apiKey||!program.text)return;
+  _autoQBusy=true;try{await genQuests();}finally{_autoQBusy=false;}
+}
 async function genQuests(){
   if(!S.apiKey)return toast("Ajoute une clé API.");if(!program.text)return toast("Génère d'abord ton programme.");
-  const btn=$("#genQ");btn.disabled=true;btn.innerHTML='<span class="spin"></span>';
+  const btn=$("#genQ");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
   try{const sys=`À partir du PROGRAMME, propose 5 à 7 QUÊTES concrètes réalisables AUJOURD'HUI, sur plusieurs piliers. Réponds UNIQUEMENT par un tableau JSON valide : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25. pillar exactement l'une des 6 valeurs en minuscules.`;
     const r=await callAI({system:sys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes"});
     const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)throw new Error("Réponse non exploitable, réessaie.");
@@ -690,13 +718,17 @@ function extractJSON(t){try{return JSON.parse(t);}catch(e){}const a=t.indexOf("[
 function rProgression(){
   const{lvl,into,need}=levelInfo();const max=Math.max(100,...Object.values(progress.pillars));
   $("#main").innerHTML=`<h1 class="page">📈 Progression</h1><p class="sub">Ton personnage, c'est toi.</p>
+   <div class="hubgrid" style="margin-bottom:16px">
+     <button class="hubtile" data-nav="quetes"><span class="hic">⚔️</span><b>Quêtes du jour</b><span class="muted" style="font-size:12px">${quests.date===todayStr()&&quests.items.length?quests.items.filter(q=>q.done).length+"/"+quests.items.length+" faites":"À générer"}</span></button>
+     <button class="hubtile" data-nav="coffre"><span class="hic">🪙</span><b>Coffre</b><span class="muted" style="font-size:12px">${coffre.balance.toFixed(2)} €</span></button>
+   </div>
    <div class="card"><div class="stat"><div class="box"><b>${lvl}</b><span>Niveau</span></div><div class="box"><b>${progress.xp}</b><span>XP total</span></div><div class="box"><b>${into}/${need}</b><span>vers niveau ${lvl+1}</span></div></div></div>
    <div class="card"><h2>Les 6 piliers</h2>${Object.keys(PILLARS).map(k=>{const v=progress.pillars[k],p=PILLARS[k];return `<div class="pbar"><div class="top"><span>${p.label}</span><span class="muted">${v} XP</span></div><div class="track"><i style="width:${Math.round(v/max*100)}%;background:${p.color}"></i></div></div>`;}).join("")}</div>`;
 }
 
 function rCoffre(){
   if(coffre.lastMonth!==monthStr()){coffre.balance+=S.monthly;coffre.lastMonth=monthStr();save("coffre",coffre);}
-  $("#main").innerHTML=`<h1 class="page">🪙 Coffre personnel</h1><p class="sub">Une cagnotte alimentée chaque mois selon tes moyens. Elle finance tes récompenses.</p>
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="progression" style="margin-bottom:10px">← Progrès</button><h1 class="page">🪙 Coffre personnel</h1><p class="sub">Une cagnotte alimentée chaque mois selon tes moyens. Elle finance tes récompenses.</p>
    <div class="card"><div class="stat"><div class="box"><b>${coffre.balance.toFixed(2)} €</b><span>Solde</span></div><div class="box"><b>${S.monthly} €</b><span>Versement mensuel</span></div></div><p class="muted" style="margin-top:10px">Le versement se règle dans ⚙️ Réglages.</p></div>
    <div class="card"><h2>Ajouter une récompense</h2><div class="row"><div><label>Récompense</label><input id="rwName" placeholder="ex. baguettes de batterie"></div><div style="max-width:160px"><label>Coût (€)</label><input id="rwCost" type="number" min="0" step="1"></div></div><div style="margin-top:12px"><button class="btn" id="addRw">+ Ajouter</button></div></div>
    <div class="card"><h2>Mes récompenses</h2><div id="rwList">${renderRewards()}</div></div>`;
@@ -816,19 +848,29 @@ function renderTracking(){if(!tracking.length)return '<span class="muted">Aucune
 function extractJSONobj(t){try{return JSON.parse(t);}catch(e){}const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1));}catch(e){}}return null;}
 function rCalendrier(){
   const p=planning.data;
-  $("#main").innerHTML=`<h1 class="page">📅 Planning</h1><p class="sub">Ta semaine jour par jour : quoi faire, à quelle heure, et pourquoi (bouton Infos). Avec des recettes.</p>${keyBanner()}
-   <div class="card"><button class="btn" id="genPlan">✨ Générer / régénérer ma semaine</button><span class="muted" style="margin-left:10px">${planning.updated?("MàJ "+new Date(planning.updated).toLocaleString("fr-FR")):""}</span></div>
-   ${p?`<div class="card" style="border-left:4px solid var(--gold)"><h2>🔧 Imprévu ? Adapte ta semaine</h2><p class="muted" style="margin:-6px 0 8px">Décris ce qui change. L'IA réadapte le planning et les objectifs en conséquence.</p><textarea id="planEvent" placeholder="ex. Genou douloureux 3 jours, déplacement pro mardi-mercredi, mal dormi cette semaine, plus de temps ce week-end…"></textarea><div style="margin-top:10px"><button class="btn" id="adaptPlan">🔄 Adapter mon planning</button></div>${planning.note?`<div class="formatted" style="margin-top:12px;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px"><b>Dernier ajustement :</b> ${esc(planning.note)}</div>`:""}</div>`:""}
-   ${p?renderPlanning(p):'<div class="card"><span class="muted">Aucun planning. Génère ta semaine à partir de ton programme.</span></div>'}`;
-  $("#genPlan").onclick=genPlanning;const ap=$("#adaptPlan");if(ap)ap.onclick=adaptPlanning;bindPlanInfos();
+  $("#main").innerHTML=`<h1 class="page">📅 Planning</h1>${keyBanner()}
+   ${p?renderPlanning(p):`<div class="card"><button class="btn" id="genPlan" style="width:100%">✨ Générer ma semaine</button><p class="muted" style="margin:10px 0 0;font-size:13px;text-align:center">Jour par jour, à partir de ton programme.</p></div>`}
+   ${p?`<div class="card"><h2>🔧 Imprévu ?</h2><textarea id="planEvent" placeholder="ex. genou douloureux, déplacement mardi, plus de temps ce week-end…"></textarea><div style="margin-top:10px"><button class="btn" id="adaptPlan">🔄 Adapter mon planning</button></div>${planning.note?`<div class="formatted" style="margin-top:12px;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px"><b>Dernier ajustement :</b> ${esc(planning.note)}</div>`:""}</div>
+   <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px"><button class="ghost sm" id="genPlan">✨ Régénérer la semaine</button><span class="muted" style="font-size:12px">${planning.updated?("MàJ "+new Date(planning.updated).toLocaleString("fr-FR")):""}</span></div>`:""}`;
+  const gp=$("#genPlan");if(gp)gp.onclick=genPlanning;
+  const ap=$("#adaptPlan");if(ap)ap.onclick=adaptPlanning;
+  bindPlanInfos();
+  document.querySelectorAll("[data-dayt]").forEach(b=>b.onclick=()=>{const d=$("#day"+b.dataset.dayt),c=$("#caret"+b.dataset.dayt);if(!d)return;const open=d.style.display!=="none";d.style.display=open?"none":"block";if(c)c.textContent=open?"▾":"▴";});
 }
 function renderPlanning(p){
+  const tn=todayJourName().toLowerCase();
+  const all=p.jours||[];
+  const ti=all.findIndex(j=>String(j.jour||"").toLowerCase()===tn);
+  const days=ti>0?all.slice(ti).concat(all.slice(0,ti)):all.slice();
   let html="";
-  (p.jours||[]).forEach((j,ji)=>{
-    html+=`<div class="card"><h2>${esc(j.jour||"")}</h2>`;
-    (j.items||[]).forEach((it,ii)=>{
+  days.forEach((j,di)=>{
+    const ji=all.indexOf(j);
+    const isToday=String(j.jour||"").toLowerCase()===tn;
+    const items=j.items||[];
+    let body="";
+    items.forEach((it,ii)=>{
       const pil=PILLARS[it.pilier]||{label:esc(it.pilier||""),color:"var(--grey)"};
-      html+=`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
+      body+=`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:10px">
           <b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b>
           <span style="flex:1">${esc(it.titre||"")}</span>
@@ -838,7 +880,14 @@ function renderPlanning(p){
         <div id="infoj${ji}i${ii}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${it.pourquoi?("<b>Pourquoi :</b> "+esc(it.pourquoi)+"<br>"):""}${it.comment?("<b>Comment :</b> "+esc(it.comment)):""}</div>
       </div>`;
     });
-    html+=`</div>`;
+    html+=`<div class="card"${isToday?' style="border-left:4px solid var(--accent)"':""}>
+      <button data-dayt="${di}" style="background:none;border:0;width:100%;display:flex;align-items:center;gap:9px;font:inherit;cursor:pointer;padding:0;color:var(--ink)">
+        <span style="font-size:17px;font-weight:700">${esc(j.jour||"")}</span>
+        ${isToday?`<span class="pill" style="background:var(--accent)">Aujourd'hui</span>`:""}
+        <span class="muted" style="margin-left:auto;font-size:12px">${items.length} action${items.length>1?"s":""} <span id="caret${di}">${isToday?"▴":"▾"}</span></span>
+      </button>
+      <div id="day${di}" style="display:${isToday?"block":"none"};margin-top:12px">${body||'<span class="muted">Rien de prévu.</span>'}</div>
+    </div>`;
   });
   if((p.recettes||[]).length){
     html+=`<div class="card"><h2>🍽️ Recettes</h2>`;
@@ -895,7 +944,7 @@ async function adaptPlanning(){
 function rCouts(){
   const tot=costs.reduce((a,c)=>a+c.usd,0),tIn=costs.reduce((a,c)=>a+c.inTok,0),tOut=costs.reduce((a,c)=>a+c.outTok,0),n=costs.length,avg=n?tot/n:0;
   const days={};costs.forEach(c=>{days[new Date(c.ts).toISOString().slice(0,10)]=1;});const dayCount=Object.keys(days).length||1,projMonth=tot/dayCount*30;
-  $("#main").innerHTML=`<h1 class="page">💸 Coûts</h1><p class="sub">Le cœur de ton test : combien coûte réellement un utilisateur.</p>
+  $("#main").innerHTML=`<button class="ghost sm" data-nav="reglages" style="margin-bottom:10px">← Réglages</button><h1 class="page">💸 Coûts</h1><p class="sub">Le cœur de ton test : combien coûte réellement un utilisateur.</p>
    <div class="card"><div class="stat"><div class="box"><b>${USD(tot)}</b><span>Total · ${EUR(tot)}</span></div><div class="box"><b>${n}</b><span>Appels IA</span></div><div class="box"><b>${USD(avg)}</b><span>Moyen / appel</span></div><div class="box"><b>${EUR(projMonth)}</b><span>Projection / mois</span></div></div>
    <p class="muted" style="margin-top:10px">${(tIn/1000).toFixed(1)}k tok entrée · ${(tOut/1000).toFixed(1)}k tok sortie · ${dayCount} jour(s).</p><button class="ghost sm" id="clrCost" style="margin-top:6px">Réinitialiser</button></div>
    <div class="card"><h2>Détail</h2><div style="overflow-x:auto">${renderCosts()}</div></div>`;
@@ -913,7 +962,7 @@ function rReglages(){
      <div class="row"><div style="max-width:220px"><label>Versement mensuel coffre (€)</label><input id="monthIn" type="number" value="${S.monthly}"></div><div style="max-width:220px"><label>Taux $→€</label><input id="eurIn" type="number" step="0.01" value="${S.eur}"></div></div>
      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="saveSet">💾 Enregistrer</button><button class="ghost" id="testKey">🔌 Tester la clé</button></div></div>
    <div class="card"><h2>Obtenir une clé</h2><p class="muted">Gemini : <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> · OpenAI : <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a> · Claude : <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></p><p class="muted">Astuce coût : « éco » sur Gemini Flash-Lite pour le quotidien, « puissant » réservé au programme et à l'analyse.</p></div>
-   <div class="card"><h2>Données — transférer entre appareils</h2><p class="muted" style="margin:-6px 0 10px">Exporte depuis un appareil (ex. ton téléphone), puis importe le fichier sur l'autre (ex. ton PC) pour retrouver tout ton contenu.</p><button class="ghost sm" id="exportData">⬇︎ Exporter (JSON)</button> <button class="ghost sm" id="importData">⬆︎ Importer (JSON)</button> <button class="ghost sm" id="logoutBtn">🚪 Se déconnecter</button> <button class="ghost sm" id="wipe" style="color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button></div>`;
+   <div class="card"><h2>Données — transférer entre appareils</h2><p class="muted" style="margin:-6px 0 10px">Exporte depuis un appareil (ex. ton téléphone), puis importe le fichier sur l'autre (ex. ton PC) pour retrouver tout ton contenu.</p><button class="ghost sm" id="exportData">⬇︎ Exporter (JSON)</button> <button class="ghost sm" id="importData">⬆︎ Importer (JSON)</button> <button class="ghost sm" data-nav="couts">💸 Coûts IA</button> <button class="ghost sm" id="logoutBtn">🚪 Se déconnecter</button> <button class="ghost sm" id="wipe" style="color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button></div>`;
   $("#provSel").onchange=e=>{S.provider=e.target.value;S.cheap=MODELS[S.provider][0].id;S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;save("settings",S);render();};
   $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;save("settings",S);toast("Enregistré ✓");};
   $("#testKey").onclick=async()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;save("settings",S);if(!S.apiKey)return toast("Colle une clé.");const b=$("#testKey");b.disabled=true;b.innerHTML='<span class="spin"></span>';try{await callAI({system:"Réponds: OK.",messages:[{role:"user",text:"dis OK"}],modelId:S.cheap,label:"test"});toast("Clé OK ✓");}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent="🔌 Tester la clé";}};
