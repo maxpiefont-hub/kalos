@@ -370,7 +370,7 @@ function rAccueil(){
   else if(!program.text) next={t:"Génère ton programme de vie",go:"programme"};
   else if(!planning.data) next={t:"Génère ta semaine (planning)",go:"calendrier"};
   else next={t:"Fais tes quêtes du jour",go:"quetes"};
-  $("#main").innerHTML=`<h1 class="page">Bonjour</h1>${keyBanner()}
+  $("#main").innerHTML=`<h1 class="page">Bonjour</h1>${keyBanner()}${sleepBanner()}
    <div class="card hero"><div class="eyebrow">Prochaine étape</div><div style="font-size:21px;font-weight:800;margin:7px 0 15px;line-height:1.25">${esc(next.t)}</div><button class="btn onhero hub-cta" data-nav="${next.go}">Continuer →</button></div>
    <div class="statline">
      <div class="b" data-nav="progression"><b>Niv. ${lvl}</b><span>${into}/${need} XP</span></div>
@@ -410,6 +410,7 @@ function rAccueil(){
   const hb=$("#howBtn");if(hb)hb.onclick=()=>{const x=$("#howBox");x.style.display=x.style.display==="none"?"block":"none";};
   document.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{checkin={date:todayStr(),mood:b.dataset.mood};save("checkin",checkin);toast("Check-in noté ✓");render();});
   bindQuests();
+  bindSleepBanner();
   if(quests.date!==todayStr()&&S.apiKey&&program.text){const ql=$("#qList");if(ql)ql.innerHTML='<span class="muted">⚔️ Préparation des quêtes du jour…</span>';autoQuests();}
   const wx=$("#wxToggle");if(wx)wx.onclick=()=>{const b=$("#wxBox"),c=$("#wxCaret");const open=b.style.display!=="none";b.style.display=open?"none":"block";if(c)c.textContent=open?"détails ▾":"masquer ▴";};
 }
@@ -466,13 +467,17 @@ async function creerMonPlan(){
   }catch(e){toast(e.message);set("");if(btn)btn.disabled=false;}
 }
 const DISCOVERY_SYSTEM=`Tu es Kalos, un coach de vie chaleureux et efficace (inspiré de la kalokagathia).
-RÈGLE ABSOLUE : pose EXACTEMENT UNE question à la fois, très courte (1 phrase). JAMAIS plusieurs questions dans un même message. Pas de long paragraphe.
+RÈGLES ABSOLUES :
+- Tu REÇOIS déjà le contexte (date, heure, saison, météo, planning du jour) et souvent une FICHE PROFIL. Ne redemande JAMAIS une info qui s'y trouve (âge, mensurations, contraintes santé, dispos, goûts, lieux, matériel...). Utilise-les directement.
+- UNE question à la fois, très courte (1 phrase), et UNIQUEMENT si la réponse est indispensable et absente de la fiche. Jamais plus de 2 questions d'affilée : ensuite tu AGIS avec des hypothèses raisonnables que tu annonces en une ligne (modifiables après).
+- Si la personne demande quelque chose de concret (programme, planning de la semaine ou de la semaine prochaine, conseil), tu le FAIS immédiatement au lieu de poser des questions.
+- Mémorise les lieux favoris, habitudes et préférences mentionnés au fil des conversations : ils doivent nourrir la fiche profil.
 Termine TOUJOURS ton message par une ligne, au format EXACT :
 OPTIONS: réponse courte 1 | réponse courte 2 | réponse courte 3
 en proposant 2 à 4 réponses rapides que la personne peut choisir d'un simple tap (elle peut aussi répondre librement).
-Tu apprends peu à peu : santé, habitudes, contraintes (asthme, dos, genoux), goûts, temps dispo, objectifs. Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.
 Quand tu en sais assez, dis-le en une phrase et propose OPTIONS: Générer mon profil | Continuer.
-Si la personne te demande de MODIFIER son planning ou sa journée (déplacer, ajouter, réduire une activité, « pas le temps mardi », « décale ma séance », etc.), confirme en une phrase, PUIS ajoute tout à la fin une ligne au format EXACT : ACTION: PLANNING | description claire et précise du changement demandé. N'ajoute cette ligne QUE pour une vraie demande de modification du planning.
+Si la personne te demande de MODIFIER ou CONSTRUIRE son planning (cette semaine ou la prochaine : déplacer, ajouter, réduire, « fais ma semaine », « pas le temps mardi »...), confirme en une phrase, PUIS ajoute tout à la fin une ligne au format EXACT : ACTION: PLANNING | description claire et complète de la demande. N'ajoute cette ligne QUE pour une vraie demande de planning.
+Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.
 Commence par une phrase d'accueil + ta première question + la ligne OPTIONS.`;
 const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
 let pendingImgs=[];
@@ -511,7 +516,8 @@ async function aiTurn(first,imgs){
     let msgs;
     if(first){msgs=[{role:"user",text:"Commençons l'entretien de découverte."}];}
     else{msgs=chat.map(m=>({role:m.role==="assistant"?"assistant":"user",text:m.text}));if(imgs&&imgs.length){msgs[msgs.length-1]={role:"user",text:chat[chat.length-1].text,imgs:imgs};}}
-    const r=await callAI({system:DISCOVERY_SYSTEM,messages:msgs,modelId:S.cheap,label:"découverte"});
+    const pctx=profile.text?"\n\nFICHE PROFIL ACTUELLE (déjà connue — ne redemande RIEN de ce qui s'y trouve, appuie-toi dessus) :\n"+profile.text.slice(0,2500):"";
+    const r=await callAI({system:DISCOVERY_SYSTEM+pctx,messages:msgs,modelId:S.cheap,label:"découverte"});
     chat.push({role:"assistant",text:r.text});save("chat",chat);drawChat();
     const act=parseAction(r.text);
     if(act){ if(planning.data){ try{const note=await applyPlanningChange(act);chat.push({role:"assistant",text:"✓ Planning mis à jour. "+(note||"")});save("chat",chat);drawChat();toast("Planning mis à jour ✓");}catch(e){toast(e.message);} } else { toast("Génère d'abord un planning (onglet Planning)."); } }
@@ -520,7 +526,7 @@ async function aiTurn(first,imgs){
 async function genProfile(){
   if(!S.apiKey)return toast("Ajoute une clé API.");if(chat.length<2)return toast("Échange un peu plus d'abord.");
   const b=$("#genProfileBtn");b.disabled=true;b.innerHTML='<span class="spin"></span>';
-  try{const sys="Tu METS À JOUR une FICHE DE PROFIL. On te donne la FICHE EXISTANTE (parfois vide) et une CONVERSATION récente. Intègre les NOUVEAUX éléments : complète et corrige les sections, FUSIONNE, supprime les doublons. Garde une fiche CONCISE et structurée avec ces sections fixes : Identité & contexte, Santé & contraintes, Habitudes, Envies & valeurs, Ambitions, Budget & environnement, Notes pour le coaching. Maximum ~1 page. Ne rallonge pas inutilement, ne répète rien, ne réécris pas ce qui n'a pas changé. Renvoie la fiche COMPLÈTE mise à jour, en français.";
+  try{const sys="Tu METS À JOUR une FICHE DE PROFIL. On te donne la FICHE EXISTANTE (parfois vide) et une CONVERSATION récente. Intègre les NOUVEAUX éléments : complète et corrige les sections, FUSIONNE, supprime les doublons. Garde une fiche CONCISE et structurée avec ces sections fixes : Identité & contexte, Santé & contraintes, Habitudes & lieux favoris (rythme de vie, endroits où il aime aller, activités récurrentes), Envies & valeurs, Ambitions, Budget & environnement, Notes pour le coaching. Maximum ~1 page. Ne rallonge pas inutilement, ne répète rien, ne réécris pas ce qui n'a pas changé. Renvoie la fiche COMPLÈTE mise à jour, en français.";
     const conv=chat.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n");
     const r=await callAI({system:sys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION RÉCENTE:\n"+conv}],modelId:S.cheap,label:"profil"});
     profile={text:r.text,updated:Date.now()};save("profile",profile);toast("Profil généré ✓");current="profil";buildNav();render();
@@ -535,7 +541,7 @@ async function coachCreerPlan(){
   try{
     set("1/3 · Je mets à jour ton profil…");
     const conv=chat.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n");
-    const psys="Tu construis/METS À JOUR une FICHE DE PROFIL à partir d'une CONVERSATION (et d'une fiche existante parfois vide). Fiche CONCISE et structurée (français), sections : Identité & contexte, Santé & contraintes, Habitudes, Envies & valeurs, Ambitions, Disponibilités, Notes pour le coaching. Fusionne sans doublon, ~1 page. Travaille avec ce que tu as, même partiel — ne réclame rien. Renvoie la fiche COMPLÈTE. "+SCI;
+    const psys="Tu construis/METS À JOUR une FICHE DE PROFIL à partir d'une CONVERSATION (et d'une fiche existante parfois vide). Fiche CONCISE et structurée (français), sections : Identité & contexte, Santé & contraintes, Habitudes & lieux favoris, Envies & valeurs, Ambitions, Disponibilités, Notes pour le coaching. Fusionne sans doublon, ~1 page. Travaille avec ce que tu as, même partiel — ne réclame rien. Renvoie la fiche COMPLÈTE. "+SCI;
     let r=await callAI({system:psys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION:\n"+conv}],modelId:S.cheap,label:"profil"});
     profile={text:r.text,updated:Date.now()};save("profile",profile);
     set("2/3 · Je construis ton programme…");
@@ -840,28 +846,49 @@ function svgChart(m){
 }
 function drawChart(){const box=$("#chartBox");if(!box)return;const m=METRICS.find(x=>x.k===chartMetric)||METRICS[0];box.innerHTML=svgChart(m);const cc=$("#chartChips");if(cc)cc.querySelectorAll("[data-m]").forEach(b=>b.style.cssText=chartChipStyle(b.dataset.m===chartMetric));}
 function rSuivi(){
-  $("#main").innerHTML=`<h1 class="page">📏 Suivi</h1><p class="sub">Pas seulement le poids. Note ton sommeil, tes mensurations, ton énergie et tes photos.</p>
+  $("#main").innerHTML=`${sleepBanner()}<h1 class="page">📏 Suivi</h1>
    <div class="card"><h2>Nouvelle mesure</h2>
      <div class="row"><div><label>Date</label><input id="tDate" type="date" value="${todayStr()}"></div><div><label>Poids (kg)</label><input id="tPoids" type="number" step="0.1" inputmode="decimal"></div></div>
-     <div class="row"><div><label>Heure de coucher</label><input id="tCouch" type="time"></div><div><label>Heure de réveil</label><input id="tReve" type="time"></div><div><label>Sommeil (calculé)</label><input id="tSomCalc" readonly placeholder="—" style="background:var(--accent-l);font-weight:600"></div></div>
-     <div class="row"><div><label>Qualité du sommeil (1-10)</label><input id="tQsom" type="number" min="1" max="10" inputmode="numeric"></div><div><label>Énergie (1-10)</label><input id="tEner" type="number" min="1" max="10" inputmode="numeric"></div><div><label>Humeur (1-10)</label><input id="tMood" type="number" min="1" max="10" inputmode="numeric"></div></div>
-     <h2 style="margin-top:18px;font-size:15px">Mensurations (cm)</h2>
-     <div class="row"><div><label>Tour de taille</label><input id="tTaille" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de hanches</label><input id="tHanch" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de poitrine</label><input id="tPoit" type="number" step="0.1" inputmode="decimal"></div></div>
-     <div class="row"><div><label>Tour de bras (contracté)</label><input id="tBras" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de cuisse</label><input id="tCuis" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de mollet</label><input id="tMol" type="number" step="0.1" inputmode="decimal"></div></div>
-     <label>Note / ressenti</label><input id="tNote" placeholder="ex. bonne séance dos, jambes lourdes...">
-     <div id="suiviPrev" style="margin-top:10px"></div>
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="suiviPhoto">📷 Photo</button><button class="btn" id="addT">+ Enregistrer</button></div></div>
+     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:13px">
+       <button class="ghost sm" data-sec="secSommeil">😴 Sommeil ▾</button>
+       <button class="ghost sm" data-sec="secRessenti">🙂 Ressenti ▾</button>
+       <button class="ghost sm" data-sec="secMensu">📏 Mensurations ▾</button>
+       <button class="ghost sm" data-sec="secNote">📝 Note & photo ▾</button>
+     </div>
+     <div id="secSommeil" style="display:none">
+       <div class="row"><div><label>Heure de coucher</label><input id="tCouch" type="time"></div><div><label>Heure de réveil</label><input id="tReve" type="time"></div><div><label>Sommeil (calculé)</label><input id="tSomCalc" readonly placeholder="—" style="background:var(--accent-l);font-weight:600"></div></div>
+     </div>
+     <div id="secRessenti" style="display:none">
+       <div class="row"><div><label>Qualité du sommeil (1-10)</label><input id="tQsom" type="number" min="1" max="10" inputmode="numeric"></div><div><label>Énergie (1-10)</label><input id="tEner" type="number" min="1" max="10" inputmode="numeric"></div><div><label>Humeur (1-10)</label><input id="tMood" type="number" min="1" max="10" inputmode="numeric"></div></div>
+     </div>
+     <div id="secMensu" style="display:none">
+       <div class="row"><div><label>Tour de taille</label><input id="tTaille" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de hanches</label><input id="tHanch" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de poitrine</label><input id="tPoit" type="number" step="0.1" inputmode="decimal"></div></div>
+       <div class="row"><div><label>Tour de bras (contracté)</label><input id="tBras" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de cuisse</label><input id="tCuis" type="number" step="0.1" inputmode="decimal"></div><div><label>Tour de mollet</label><input id="tMol" type="number" step="0.1" inputmode="decimal"></div></div>
+     </div>
+     <div id="secNote" style="display:none">
+       <label>Note / ressenti</label><input id="tNote" placeholder="ex. bonne séance dos">
+       <div id="suiviPrev" style="margin-top:10px"></div>
+       <div style="margin-top:10px"><button class="iconbtn" id="suiviPhoto">📷 Photo</button></div>
+     </div>
+     <div style="margin-top:14px"><button class="btn" id="addT" style="width:100%">+ Enregistrer</button></div></div>
    <div class="card"><h2>🌙 Sommeil automatique</h2>
-     <p class="muted" style="margin:-4px 0 10px;font-size:13.5px">Le soir, appuie sur « Je me couche » juste avant de poser ton téléphone. Au réveil, à la première ouverture de Kalos, ton temps de sommeil est calculé et proposé tout seul — plus besoin de saisir les heures.</p>
      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
        <button class="btn" id="goBed">🌙 Je me couche maintenant</button>
-       <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer"><input type="checkbox" id="swToggle"> Détection auto au réveil</label>
+       <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin:0"><input type="checkbox" id="swToggle"> Détection auto</label>
      </div>
      <p class="muted" id="swState" style="margin:10px 0 0;font-size:12.5px"></p>
-     <p class="muted" style="margin:8px 0 0;font-size:11.5px">ℹ️ Kalos est une appli web : l'auto fonctionne quand c'est la dernière appli ouverte le soir et la première le matin. Le bouton « Je me couche » la rend fiable à coup sûr.</p>
+     <button class="ghost sm" id="swHowBtn" style="margin-top:10px">ℹ️ Comment ça marche</button>
+     <div id="swHowBox" class="muted" style="display:none;margin-top:8px;font-size:13px">Le soir, appuie sur « Je me couche » juste avant de poser ton téléphone. Au réveil, à la première ouverture de Kalos, ton temps de sommeil est calculé et proposé tout seul — plus besoin de saisir les heures. Kalos est une appli web : l'auto fonctionne quand c'est la dernière appli ouverte le soir et la première le matin. Le bouton « Je me couche » la rend fiable à coup sûr.</div>
    </div>
-   <div class="card"><h2>📐 Comment et quand prendre tes mesures</h2>
-     <div class="formatted" style="font-size:13.5px">
+   <div class="card"><h2>📈 Courbes d'évolution</h2>
+     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="checkbox" id="chartToggle"${chartOn?" checked":""}> Afficher</label>
+     <div id="chartWrap" style="display:${chartOn?"block":"none"};margin-top:12px">
+       <div id="chartChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${METRICS.map(m=>`<button type="button" data-m="${m.k}" style="${chartChipStyle(m.k===chartMetric)}">${m.label}</button>`).join("")}</div>
+       <div id="chartBox"></div>
+     </div></div>
+   <div class="card soft">
+     <button class="ghost sm" id="guideBtn">📐 Comment prendre tes mesures ▾</button>
+     <div id="guideBox" class="formatted" style="display:none;margin-top:10px;font-size:13.5px">
        <b>Quand :</b> le matin, à jeun, après être allé aux toilettes, avant de boire ou manger — pour des chiffres comparables d'une fois à l'autre.<br>
        <b>Matériel :</b> un mètre ruban souple. Tiens-toi détendu, ne rentre pas le ventre, ne serre pas le ruban.<br><br>
        <b>Poids :</b> pèse-toi 2-3 fois/semaine le matin et regarde la <b>moyenne</b> (le poids varie chaque jour à cause de l'eau — ne te fie pas à un seul chiffre).<br>
@@ -872,17 +899,14 @@ function rSuivi(){
        <b>Cuisse :</b> au plus large, juste sous le pli des fessiers. &nbsp;<b>Mollet :</b> au plus large.<br><br>
        <b>À quelle fréquence :</b> sommeil + énergie chaque jour ; mensurations 1×/semaine ; photos 1×/mois (même lumière, même pose, 3 angles : face, profil, dos).
      </div></div>
-   <div class="card"><h2>📈 Courbes d'évolution</h2>
-     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="checkbox" id="chartToggle"${chartOn?" checked":""}> Afficher les courbes d'évolution</label>
-     <div id="chartWrap" style="display:${chartOn?"block":"none"};margin-top:12px">
-       <div id="chartChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${METRICS.map(m=>`<button type="button" data-m="${m.k}" style="${chartChipStyle(m.k===chartMetric)}">${m.label}</button>`).join("")}</div>
-       <div id="chartBox"></div>
-     </div></div>
    <div class="card"><h2>Historique</h2><div style="overflow-x:auto">${renderTracking()}</div></div>`;
   const upd=()=>{const d=sleepDur($("#tCouch").value,$("#tReve").value);$("#tSomCalc").value=d!=null?hm(d):"";};
   $("#tCouch").oninput=upd;$("#tReve").oninput=upd;
   $("#suiviPhoto").onclick=async()=>{const im=await pickImage(600);if(im){suiviPending=im;$("#suiviPrev").innerHTML=`<div class="imgprev"><img src="${im.dataUrl}"><span>Photo jointe</span><button class="ghost sm" id="rmSu" style="margin-left:auto">✕</button></div>`;$("#rmSu").onclick=()=>{suiviPending=null;$("#suiviPrev").innerHTML="";};}};
   $("#addT").onclick=()=>{const couch=$("#tCouch").value,reve=$("#tReve").value;const row={date:$("#tDate").value,poids:$("#tPoids").value,couch,reve,somMin:sleepDur(couch,reve),qsom:$("#tQsom").value,ener:$("#tEner").value,mood:$("#tMood").value,taille:$("#tTaille").value,hanch:$("#tHanch").value,poit:$("#tPoit").value,bras:$("#tBras").value,cuis:$("#tCuis").value,mol:$("#tMol").value,note:$("#tNote").value,photo:suiviPending?suiviPending.dataUrl:null};if(!row.date)return toast("Mets une date.");tracking.unshift(row);save("tracking",tracking);suiviPending=null;toast("Mesure enregistrée ✓");render();};
+  document.querySelectorAll("[data-sec]").forEach(b=>b.onclick=()=>{const s=$("#"+b.dataset.sec);if(!s)return;const open=s.style.display!=="none";s.style.display=open?"none":"block";b.textContent=b.textContent.replace(open?"▴":"▾",open?"▾":"▴");});
+  const gd=$("#guideBtn");if(gd)gd.onclick=()=>{const x=$("#guideBox");x.style.display=x.style.display==="none"?"block":"none";};
+  const sh=$("#swHowBtn");if(sh)sh.onclick=()=>{const x=$("#swHowBox");x.style.display=x.style.display==="none"?"block":"none";};
   const cw=$("#chartWrap"),ct=$("#chartToggle");
   if(ct)ct.onchange=()=>{chartOn=ct.checked;if(cw)cw.style.display=chartOn?"block":"none";if(chartOn)drawChart();};
   const cc=$("#chartChips");if(cc)cc.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{chartMetric=b.dataset.m;drawChart();});
@@ -890,6 +914,7 @@ function rSuivi(){
   const tog=$("#swToggle");if(tog){tog.checked=swEnabled();tog.onchange=()=>{swSet("enabled",tog.checked?"1":"0");refreshSwState();};}
   const gb=$("#goBed");if(gb)gb.onclick=()=>{goToBed();refreshSwState();};
   refreshSwState();
+  bindSleepBanner();
 }
 function renderTracking(){if(!tracking.length)return '<span class="muted">Aucune mesure.</span>';return `<table><tr><th>Date</th><th>Poids</th><th>Sommeil</th><th>Taille</th><th>Hanch.</th><th>Poitr.</th><th>Bras</th><th>Cuisse</th><th>Mol.</th><th>Én.</th><th>Note</th><th>Photo</th><th></th></tr>${tracking.map((t,i)=>`<tr><td>${esc(t.date)}</td><td>${esc(t.poids||"-")}</td><td>${t.somMin!=null&&t.somMin!==""?hm(t.somMin):"-"}${t.couch&&t.reve?`<br><span class="muted" style="font-size:11px">${esc(t.couch)}→${esc(t.reve)}</span>`:""}</td><td>${esc(t.taille||"-")}</td><td>${esc(t.hanch||"-")}</td><td>${esc(t.poit||"-")}</td><td>${esc(t.bras||"-")}</td><td>${esc(t.cuis||"-")}</td><td>${esc(t.mol||"-")}</td><td>${esc(t.ener||"-")}</td><td>${esc(t.note||"")}</td><td>${t.photo?`<img src="${t.photo}" class="thumb" style="max-width:54px;max-height:54px">`:"-"}</td><td><button class="btn sm ghost" data-del="${i}">✕</button></td></tr>`).join("")}</table>`;}
 
@@ -1179,28 +1204,33 @@ function recordSleep(date,couch,reve){
   save("tracking",tracking);
 }
 function proposeSleep(couch,reve){
-  const ex=$("#sleepAsk");if(ex)ex.remove();
-  const somMin=sleepDur(couch,reve);
-  const ov=document.createElement("div");
-  ov.id="sleepAsk";
-  ov.style.cssText="position:fixed;inset:0;z-index:300;background:rgba(10,30,50,.45);display:flex;align-items:center;justify-content:center;padding:18px";
-  ov.innerHTML=`<div style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-    <div style="font-size:30px;text-align:center">🌙&nbsp;→&nbsp;☀️</div>
-    <h2 style="margin:8px 0 4px;text-align:center;font-size:18px">Bien dormi ?</h2>
-    <p style="text-align:center;color:#5b6b7a;margin:0 0 16px;font-size:14px">On dirait que tu as dormi de <b>${couch}</b> à <b>${reve}</b>.<br>Soit <b style="color:#0e5fae">${hm(somMin)}</b> de sommeil.</p>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <button class="btn" id="slkOk">✅ Oui, enregistrer</button>
-      <button class="btn ghost" id="slkEdit">✏️ Ajuster les heures</button>
-      <button class="ghost sm" id="slkNo" style="align-self:center">Ce n'était pas un sommeil</button>
-    </div>
-    <p style="text-align:center;color:#9aa7b4;margin:14px 0 0;font-size:11px">Détection auto · tu peux la couper dans Suivi.</p>
-  </div>`;
-  document.body.appendChild(ov);
-  const close=()=>ov.remove();
-  $("#slkOk").onclick=()=>{recordSleep(todayStr(),couch,reve);close();toast("Sommeil enregistré ✓");if(current==="suivi")render();};
-  $("#slkEdit").onclick=()=>{close();navTo("suivi");setTimeout(()=>{const c=$("#tCouch"),r=$("#tReve");if(c){c.value=couch;c.dispatchEvent(new Event("input"));}if(r){r.value=reve;r.dispatchEvent(new Event("input"));}},150);};
-  $("#slkNo").onclick=close;
-  ov.onclick=(e)=>{if(e.target===ov)close();};
+  swSet("pending",couch+"|"+reve);swSet("pendingDate",todayStr());
+  try{if(document.getElementById("main"))render();}catch(e){}
+}
+function sleepPending(){
+  if(!swGet("pending"))return null;
+  if(swGet("pendingDate")!==todayStr()){swDel("pending");swDel("pendingDate");return null;}
+  const parts=String(swGet("pending")).split("|");
+  if(parts.length<2||!parts[0]||!parts[1])return null;
+  return{couch:parts[0],reve:parts[1],som:sleepDur(parts[0],parts[1])};
+}
+function sleepBanner(){
+  const p=sleepPending();if(!p)return "";
+  return `<div class="card" style="border-left:4px solid var(--accent);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+    <span style="font-size:22px">🌙</span>
+    <div style="flex:1;min-width:170px"><b>Bien dormi ?</b><div class="muted" style="font-size:13px">De ${esc(p.couch)} à ${esc(p.reve)} — ${hm(p.som)} de sommeil.</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn sm" id="slbOk">✅ Oui</button>
+      <button class="ghost sm" id="slbEdit">✏️ Ajuster</button>
+      <button class="ghost sm" id="slbNo" title="Ignorer">✕</button>
+    </div></div>`;
+}
+function bindSleepBanner(){
+  const p=sleepPending();if(!p)return;
+  const clear=()=>{swDel("pending");swDel("pendingDate");};
+  const ok=$("#slbOk");if(ok)ok.onclick=()=>{recordSleep(todayStr(),p.couch,p.reve);clear();toast("Sommeil enregistré ✓");render();};
+  const ed=$("#slbEdit");if(ed)ed.onclick=()=>{clear();navTo("suivi");setTimeout(()=>{const sm=$("#secSommeil");if(sm)sm.style.display="block";const c=$("#tCouch"),r=$("#tReve");if(c){c.value=p.couch;c.dispatchEvent(new Event("input"));}if(r){r.value=p.reve;r.dispatchEvent(new Event("input"));}},150);};
+  const no=$("#slbNo");if(no)no.onclick=()=>{clear();render();};
 }
 function sleepWatchHidden(){
   if(!swEnabled())return;
