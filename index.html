@@ -205,6 +205,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
+const APP_VERSION="v32";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -406,7 +407,8 @@ function rAccueil(){
        <b>2. Quand & où, pas seulement quoi.</b> Décider de l'heure et du lieu d'une action augmente fortement la probabilité de la faire (« intentions d'implémentation », Gollwitzer, 1999) — c'est tout le rôle du Planning.<br><br>
        <b>3. Une motivation qui tient.</b> On tient sur la durée quand on se sent autonome, compétent et relié à ses valeurs (théorie de l'autodétermination, Deci & Ryan). Kalos te laisse choisir, te fait progresser par paliers (XP), et relie tout à ta vision (kalokagathia).<br><br>
        <b>4. La régularité prime sur la perfection.</b> Une habitude met ~66 jours en moyenne à s'ancrer, avec de la souplesse (Lally et al., 2010).
-   </div></div>`;
+   </div></div>
+   <p class="muted" style="text-align:center;font-size:11px;margin:4px 0 0">Kalos ${APP_VERSION}</p>`;
   const hb=$("#howBtn");if(hb)hb.onclick=()=>{const x=$("#howBox");x.style.display=x.style.display==="none"?"block":"none";};
   document.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{checkin={date:todayStr(),mood:b.dataset.mood};save("checkin",checkin);toast("Check-in noté ✓");render();});
   bindQuests();

@@ -1,5 +1,5 @@
 /* Kalos service worker — coquille hors-ligne. Les appels IA passent toujours par le réseau. */
-const CACHE = "kalos-v31";
+const CACHE = "kalos-v32";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -15,6 +15,18 @@ self.addEventListener("fetch", (e) => {
   // Ne jamais mettre en cache les appels IA
   if (url.includes("googleapis.com") || url.includes("api.openai.com") || url.includes("api.anthropic.com")) return;
   if (e.request.method !== "GET") return;
+  // Pages (navigation) : RÉSEAU D'ABORD → toujours la dernière version en ligne ; cache seulement hors-ligne.
+  if (e.request.mode === "navigate" || url.endsWith("/index.html")) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match(e.request).then((hit) => hit || caches.match("./index.html")))
+    );
+    return;
+  }
+  // Assets : cache d'abord (rapide), réseau en secours.
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
       const copy = res.clone();
