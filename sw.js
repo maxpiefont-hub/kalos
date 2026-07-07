@@ -1,5 +1,5 @@
-/* Kalos service worker — coquille hors-ligne. Les appels IA passent toujours par le réseau. (build v33.1) */
-const CACHE = "kalos-v33";
+/* Kalos service worker — coquille hors-ligne. Les appels IA passent toujours par le réseau. (build v34) */
+const CACHE = "kalos-v34";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {

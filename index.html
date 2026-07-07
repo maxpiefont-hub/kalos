@@ -159,6 +159,12 @@
   .statline .b b{display:block;font-size:18px;color:var(--accent-d);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .statline .b span{font-size:11px;color:var(--grey)}
   .statline .b.empty b{color:var(--accent);font-size:14px;font-weight:700}
+  /* ===== Planning temps réel ===== */
+  .quest.pi-done{opacity:.6;background:#f3f6f3}
+  .quest.pi-miss{border-left:3px solid var(--danger)}
+  .quest.pi-now{border-color:var(--accent);background:var(--accent-l)}
+  .daynav{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 10px;margin-bottom:12px}
+  .daynav .dlab{flex:1;text-align:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -204,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v33";
+const APP_VERSION="v34";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -215,7 +221,7 @@ const DEFAULTS={
   settings:{provider:"google",apiKey:"",cheap:"gemini-2.5-flash-lite",power:"gemini-2.5-flash",eur:0.92,monthly:30},
   profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null},
   nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null},
-  planning:{data:null,updated:null},
+  planning:{data:null,updated:null},planlog:{},
   checkin:{date:"",mood:""},
   quests:{date:"",items:[]},progress:{xp:0,pillars:{sante:0,esprit:0,culture:0,art:0,travail:0,relations:0}},
   coffre:{balance:0,lastMonth:"",rewards:[]},tracking:[],costs:[],chat:[],
@@ -223,12 +229,50 @@ const DEFAULTS={
 const K=(k)=>"kalos_"+k;
 function load(k){try{const v=localStorage.getItem(K(k));return v?JSON.parse(v):structuredClone(DEFAULTS[k]);}catch(e){return structuredClone(DEFAULTS[k]);}}
 function save(k,v){try{localStorage.setItem(K(k),JSON.stringify(v));localStorage.setItem("kalos__chg",String(Date.now()));}catch(e){toast("Stockage plein — exporte/efface des photos.");}cloudSave();}
-let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat");
+let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),planlog=load("planlog"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat");
 const $=(s,el=document)=>el.querySelector(s);
 const esc=(t)=>(t||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2600);}
-const todayStr=()=>new Date().toISOString().slice(0,10);
-const monthStr=()=>new Date().toISOString().slice(0,7);
+const p2=n=>String(n).padStart(2,"0");
+const dateISO=(d)=>d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate());
+const todayStr=()=>dateISO(new Date());
+const monthStr=()=>{const d=new Date();return d.getFullYear()+"-"+p2(d.getMonth()+1);};
+const dayMs=86400000;
+const dateAt=(off)=>new Date(Date.now()+off*dayMs);
+/* — suivi du planning par vraie date (fait / loupé) — */
+const itemKey=(it)=>String(it.h||"")+"|"+String(it.titre||"").slice(0,40);
+function setPlanDone(dateS,key,val){if(!planlog[dateS])planlog[dateS]={};if(val)planlog[dateS][key]=true;else delete planlog[dateS][key];save("planlog",planlog);}
+function jourObjFor(d){if(!planning.data||!planning.data.jours)return null;const n=JOURS_FR[d.getDay()].toLowerCase();return planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===n)||null;}
+function itemStates(items,dateS){
+  const today=todayStr(),now=nowHM(),done=planlog[dateS]||{};
+  let cur=-1;
+  if(dateS===today)items.forEach((it,i)=>{if(String(it.h||"")<=now)cur=i;});
+  return items.map((it,i)=>{
+    if(done[itemKey(it)])return "done";
+    if(dateS<today)return "miss";
+    if(dateS>today)return "up";
+    return i<cur?"miss":(i===cur?"now":"up");
+  });
+}
+function renderDayItems(dateS,items,compact){
+  if(!items||!items.length)return '<span class="muted">Rien de prévu.</span>';
+  const sts=itemStates(items,dateS);
+  return items.map((it,ii)=>{
+    const st=sts[ii],k=itemKey(it);
+    const pil=PILLARS[it.pilier]||{label:esc(it.pilier||""),color:"var(--grey)"};
+    const badge=st==="now"?'<span class="pill" style="background:var(--accent)">maintenant</span>':(st==="miss"?'<span class="pill" style="background:var(--danger)">loupé ?</span>':"");
+    const hasInfo=!compact&&(it.pourquoi||it.comment);
+    return `<div class="quest pi-${st}" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" data-plandone="${dateS}~${encodeURIComponent(k)}" ${st==="done"?"checked":""}>
+        <b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b>
+        <span style="flex:1;min-width:0${st==="done"?";text-decoration:line-through;opacity:.7":""}">${esc(it.titre||"")}</span>
+        ${badge}<span class="pill" style="background:${pil.color}">${pil.label}</span>${hasInfo?`<button class="ghost sm" data-pinfo="d${dateS}i${ii}">ℹ️</button>`:""}
+      </div>
+      ${hasInfo?`<div id="pinfod${dateS}i${ii}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${it.pourquoi?("<b>Pourquoi :</b> "+esc(it.pourquoi)+"<br>"):""}${it.comment?("<b>Comment :</b> "+esc(it.comment)):""}</div>`:""}
+    </div>`;
+  }).join("");
+}
 function saison(){const m=new Date().getMonth()+1;if(m>=3&&m<=5)return"printemps";if(m>=6&&m<=8)return"été";if(m>=9&&m<=11)return"automne";return"hiver";}
 let ctxExtra="";
 let weatherData={air:null,mer:null,mont:null};
@@ -277,9 +321,10 @@ function nowContext(){
   if(planning&&planning.data&&planning.data.jours){
     const jd=planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===jours[d.getDay()].toLowerCase());
     if(jd&&jd.items&&jd.items.length){
-      const items=jd.items.map(it=>(it.h||"")+" "+(it.titre||"")).join(" · ");
-      const next=jd.items.find(it=>(it.h||"")>=heure);
-      plan="\nPlanning d'aujourd'hui : "+items+(next?(". Prochaine action prévue : "+(next.h||"")+" "+(next.titre||"")+"."):". Journée presque terminée.");
+      const dl=planlog[todayStr()]||{};
+      const items=jd.items.map(it=>(it.h||"")+" "+(it.titre||"")+(dl[itemKey(it)]?" (fait ✓)":((it.h||"")<heure?" (pas encore fait)":""))).join(" · ");
+      const next=jd.items.find(it=>(it.h||"")>=heure&&!dl[itemKey(it)]);
+      plan="\nPlanning d'aujourd'hui (avec état réel) : "+items+(next?(". Prochaine action prévue : "+(next.h||"")+" "+(next.titre||"")+"."):". Journée presque terminée.");
     }
   }
   return "CONTEXTE (tu connais déjà ces infos, ne les redemande JAMAIS) : nous sommes le "+date+", il est "+heure+", saison "+saison()+"."+ctxExtra+plan;
@@ -327,7 +372,7 @@ const NAV_GROUP={moi:["profil","programme","salle","nutrition","progression","qu
 let current="accueil";
 const CORE=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"moi",ic:"🪪",label:"Moi"}];
 function navParent(id){for(const k in NAV_GROUP)if(NAV_GROUP[k].includes(id))return k;return id;}
-function navTo(id){if(id==="moi")id="profil";current=id;buildNav();render();window.scrollTo(0,0);}
+function navTo(id){if(id==="moi")id="profil";if(id==="calendrier")planDay=0;current=id;buildNav();render();window.scrollTo(0,0);}
 function buildNav(){
   const par=navParent(current);
   const nav=$("#nav");if(nav){nav.innerHTML="";NAV_MAIN.forEach(p=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${p.ic}</span><span class="lbl">${p.label}</span>`;b.className=(p.id===par?"active":"");b.onclick=()=>navTo(p.id);nav.appendChild(b);});}
@@ -374,14 +419,14 @@ function rAccueil(){
      <div class="b ${lastT.poids?"":"empty"}" data-nav="suivi">${lastT.poids?`<b>${esc(lastT.poids)} kg</b><span>poids</span>`:`<b>+ Poids</b><span>1ʳᵉ mesure</span>`}</div>
      <div class="b ${lastT.taille?"":"empty"}" data-nav="suivi">${lastT.taille?`<b>${esc(lastT.taille)} cm</b><span>taille</span>`:`<b>+ Taille</b><span>1ʳᵉ mesure</span>`}</div>
    </div>
-   <div class="card"><h2>Aujourd'hui · ${todayName}</h2>
+   <div class="card"><h2 style="display:flex;align-items:baseline;gap:8px">Aujourd'hui · ${todayName} <span class="muted" id="nowClock" style="font-size:13px;font-weight:400;margin-left:auto">${nowHM()}</span></h2>
      <div style="display:flex;gap:8px;margin-bottom:12px">
        <button class="ghost sm moodb ${ci==="bof"?"active":""}" data-mood="bof" style="flex:1">😔 Bof</button>
        <button class="ghost sm moodb ${ci==="moyen"?"active":""}" data-mood="moyen" style="flex:1">😐 Moyen</button>
        <button class="ghost sm moodb ${ci==="bien"?"active":""}" data-mood="bien" style="flex:1">🙂 Bien</button>
      </div>
      ${ci?`<p class="muted" style="margin:-4px 0 10px;font-size:12px">${ci==="bof"?"Noté — journée allégée conseillée.":ci==="bien"?"Noté — profites-en pour avancer !":"Noté."}</p>`:""}
-     ${todayPlan.length?todayPlan.slice(0,6).map(it=>`<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)"><b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b><span>${esc(it.titre||"")}</span></div>`).join(""):'<span class="muted">Pas encore de planning.</span>'}
+     ${todayPlan.length?renderDayItems(todayStr(),todayPlan,true):'<span class="muted">Pas encore de planning.</span>'}
      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><div style="font-size:13px;font-weight:600;color:var(--accent-d);margin-bottom:6px">⚔️ Quêtes du jour</div><div id="qList">${renderQuests()}</div></div>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Planning</button></div>
    </div>
@@ -450,7 +495,7 @@ async function creerMonPlan(){
     set("1/3 · Je construis ton profil…");
     const psys="À partir des RÉPONSES d'un questionnaire, rédige une FICHE DE PROFIL concise et structurée (français), sections fixes : Identité & contexte, Santé & contraintes, Disponibilités (jours + temps type), Préférences (aime / n'aime pas), Objectifs, Notes pour le coaching. Conserve les disponibilités telles quelles. "+SCI;
     let r=await callAI({system:psys,messages:[{role:"user",text:reponses}],modelId:S.cheap,label:"profil",maxTokens:1500});
-    profile={text:r.text,updated:Date.now()};save("profile",profile);
+    profile.text=r.text;profile.updated=Date.now();profile.learnedUpto=chat.length;save("profile",profile);
     set("2/3 · Je génère ton programme…");
     const gsys="Tu es Kalos (kalokagathia). À partir du PROFIL, construis un PROGRAMME DE VIE personnalisé et durable, structuré en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations), avec 1 objectif clair + 2 à 4 actions concrètes par pilier, adapté aux disponibilités et aux goûts. Réaliste et progressif. "+SCI;
     r=await callAI({system:gsys,messages:[{role:"user",text:"PROFIL:\n"+profile.text}],modelId:S.power,label:"programme",maxTokens:6000});
@@ -465,18 +510,19 @@ async function creerMonPlan(){
   }catch(e){toast(e.message);set("");if(btn)btn.disabled=false;}
 }
 const DISCOVERY_SYSTEM=`Tu es Kalos, un coach de vie chaleureux et efficace (inspiré de la kalokagathia).
+PRIORITÉ ABSOLUE : AGIR, pas interroger. Les gens n'ont pas le temps de répondre à un questionnaire.
 RÈGLES ABSOLUES :
-- Tu REÇOIS déjà le contexte (date, heure, saison, météo, planning du jour) et souvent une FICHE PROFIL. Ne redemande JAMAIS une info qui s'y trouve (âge, mensurations, contraintes santé, dispos, goûts, lieux, matériel...). Utilise-les directement.
-- UNE question à la fois, très courte (1 phrase), et UNIQUEMENT si la réponse est indispensable et absente de la fiche. Jamais plus de 2 questions d'affilée : ensuite tu AGIS avec des hypothèses raisonnables que tu annonces en une ligne (modifiables après).
+- Tu REÇOIS déjà le contexte (date, heure, saison, météo, planning du jour avec ce qui est fait ou non) et souvent une FICHE PROFIL. Ne redemande JAMAIS une info qui s'y trouve (âge, mensurations, contraintes santé, dispos, goûts, lieux, matériel...). Utilise-les directement.
+- BUDGET QUESTIONS STRICT : maximum 1 question par message, UNIQUEMENT si tu ne peux vraiment pas agir sans la réponse, et pas plus de 3 questions au TOTAL sur toute la conversation. Au-delà : tu AGIS avec des hypothèses raisonnables annoncées en une ligne (modifiables après). Une réponse SANS question est souvent la meilleure réponse.
+- Tu apprends EN OBSERVANT : chaque message contient des infos (habitudes, goûts, contraintes, lieux, humeur). Retiens-les et utilise-les — ne fais jamais répéter la personne.
+- Si une FICHE PROFIL existe déjà : AUCUN entretien. Salue en une phrase et apporte directement de la valeur (proposition concrète adaptée à l'heure et au planning du jour).
 - Si la personne demande quelque chose de concret (programme, planning de la semaine ou de la semaine prochaine, conseil), tu le FAIS immédiatement au lieu de poser des questions.
-- Mémorise les lieux favoris, habitudes et préférences mentionnés au fil des conversations : ils doivent nourrir la fiche profil.
 Termine TOUJOURS ton message par une ligne, au format EXACT :
 OPTIONS: réponse courte 1 | réponse courte 2 | réponse courte 3
 en proposant 2 à 4 réponses rapides que la personne peut choisir d'un simple tap (elle peut aussi répondre librement).
 Quand tu en sais assez, dis-le en une phrase et propose OPTIONS: Générer mon profil | Continuer.
 Si la personne te demande de MODIFIER ou CONSTRUIRE son planning (cette semaine ou la prochaine : déplacer, ajouter, réduire, « fais ma semaine », « pas le temps mardi »...), confirme en une phrase, PUIS ajoute tout à la fin une ligne au format EXACT : ACTION: PLANNING | description claire et complète de la demande. N'ajoute cette ligne QUE pour une vraie demande de planning.
-Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.
-Commence par une phrase d'accueil + ta première question + la ligne OPTIONS.`;
+Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.`;
 const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
 let pendingImgs=[];
 function rDecouverte(){
@@ -512,11 +558,12 @@ async function aiTurn(first,imgs){
   const btn=$("#sendBtn");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
   try{
     let msgs;
-    if(first){msgs=[{role:"user",text:"Commençons l'entretien de découverte."}];}
+    if(first){msgs=[{role:"user",text:profile.text?"(Reprise de conversation) Salue-moi en une phrase et propose-moi directement quelque chose d'utile pour maintenant, selon l'heure et mon planning. Pas de questions d'entretien.":"Première rencontre : présente-toi en une phrase, pose UNE seule question ouverte (qui je suis, ce que je veux changer), et propose des OPTIONS."}];}
     else{msgs=chat.map(m=>({role:m.role==="assistant"?"assistant":"user",text:m.text}));if(imgs&&imgs.length){msgs[msgs.length-1]={role:"user",text:chat[chat.length-1].text,imgs:imgs};}}
     const pctx=profile.text?"\n\nFICHE PROFIL ACTUELLE (déjà connue — ne redemande RIEN de ce qui s'y trouve, appuie-toi dessus) :\n"+profile.text.slice(0,2500):"";
     const r=await callAI({system:DISCOVERY_SYSTEM+pctx,messages:msgs,modelId:S.cheap,label:"découverte"});
     chat.push({role:"assistant",text:r.text});save("chat",chat);drawChat();
+    maybeLearnProfile();
     const act=parseAction(r.text);
     if(act){ if(planning.data){ try{const note=await applyPlanningChange(act);chat.push({role:"assistant",text:"✓ Planning mis à jour. "+(note||"")});save("chat",chat);drawChat();toast("Planning mis à jour ✓");}catch(e){toast(e.message);} } else { toast("Génère d'abord un planning (onglet Planning)."); } }
   }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="Envoyer";}}
@@ -527,8 +574,24 @@ async function genProfile(){
   try{const sys="Tu METS À JOUR une FICHE DE PROFIL. On te donne la FICHE EXISTANTE (parfois vide) et une CONVERSATION récente. Intègre les NOUVEAUX éléments : complète et corrige les sections, FUSIONNE, supprime les doublons. Garde une fiche CONCISE et structurée avec ces sections fixes : Identité & contexte, Santé & contraintes, Habitudes & lieux favoris (rythme de vie, endroits où il aime aller, activités récurrentes), Envies & valeurs, Ambitions, Budget & environnement, Notes pour le coaching. Maximum ~1 page. Ne rallonge pas inutilement, ne répète rien, ne réécris pas ce qui n'a pas changé. Renvoie la fiche COMPLÈTE mise à jour, en français.";
     const conv=chat.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n");
     const r=await callAI({system:sys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION RÉCENTE:\n"+conv}],modelId:S.cheap,label:"profil"});
-    profile={text:r.text,updated:Date.now()};save("profile",profile);toast("Profil généré ✓");current="profil";buildNav();render();
+    profile={text:r.text,updated:Date.now(),card:profile.card,cardUpdated:profile.cardUpdated,avatar:profile.avatar,learnedUpto:chat.length};save("profile",profile);toast("Profil généré ✓");current="profil";buildNav();render();
   }catch(e){toast(e.message);}finally{if(b){b.disabled=false;b.textContent="🪪 Mettre à jour mon profil";}}
+}
+/* Apprentissage silencieux : Kalos met à jour la fiche tout seul au fil de la conversation */
+let _learnBusy=false;
+async function maybeLearnProfile(){
+  if(_learnBusy||!S.apiKey)return;
+  const learned=+(profile.learnedUpto||0);
+  if(chat.length-learned<6)return; /* apprend tous les ~3 échanges */
+  if(!chat.slice(learned).some(m=>m.role==="user"))return;
+  _learnBusy=true;
+  try{
+    const recent=chat.slice(learned).map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n").slice(0,6000);
+    const sys="Tu METS À JOUR une FICHE DE PROFIL à partir des derniers échanges d'une conversation de coaching. Intègre UNIQUEMENT les nouvelles infos factuelles sur la personne (habitudes, goûts, contraintes, lieux, objectifs, matériel, budget, rythme de vie). Fusionne sans doublon, garde la structure et la concision (~1 page max). S'il n'y a rien de nouveau, renvoie la fiche telle quelle. Renvoie la fiche COMPLÈTE, en français, sans commentaire autour.";
+    const r=await callAI({system:sys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nDERNIERS ÉCHANGES:\n"+recent}],modelId:S.cheap,label:"apprentissage",maxTokens:1500});
+    if(r.text&&r.text.trim().length>40){profile.text=r.text.trim();profile.updated=Date.now();}
+    profile.learnedUpto=chat.length;save("profile",profile);
+  }catch(e){}finally{_learnBusy=false;}
 }
 
 async function coachCreerPlan(){
@@ -541,7 +604,7 @@ async function coachCreerPlan(){
     const conv=chat.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n");
     const psys="Tu construis/METS À JOUR une FICHE DE PROFIL à partir d'une CONVERSATION (et d'une fiche existante parfois vide). Fiche CONCISE et structurée (français), sections : Identité & contexte, Santé & contraintes, Habitudes & lieux favoris, Envies & valeurs, Ambitions, Disponibilités, Notes pour le coaching. Fusionne sans doublon, ~1 page. Travaille avec ce que tu as, même partiel — ne réclame rien. Renvoie la fiche COMPLÈTE. "+SCI;
     let r=await callAI({system:psys,messages:[{role:"user",text:"FICHE EXISTANTE:\n"+(profile.text||"(vide)")+"\n\nCONVERSATION:\n"+conv}],modelId:S.cheap,label:"profil"});
-    profile={text:r.text,updated:Date.now()};save("profile",profile);
+    profile.text=r.text;profile.updated=Date.now();profile.learnedUpto=chat.length;save("profile",profile);
     set("2/3 · Je construis ton programme…");
     const gsys=`Tu es Kalos (kalokagathia). À partir du PROFIL (parfois encore léger), construis un PROGRAMME DE VIE personnalisé et durable, structuré en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations), avec 1 objectif clair + 2 à 4 actions concrètes par pilier, adapté aux dispos et aux goûts connus. Réaliste et progressif ; commence simple si l'info manque. `+SCI;
     r=await callAI({system:gsys,messages:[{role:"user",text:"PROFIL:\n"+profile.text}],modelId:S.power,label:"programme",maxTokens:6000});
@@ -618,8 +681,8 @@ function rSalle(){
    <div class="card"><label>Ton programme actuel (séances, exercices, séries/répétitions...)</label>
      <textarea id="salleIn" placeholder="ex. Lundi pecs/triceps : développé couché 4x8...">${esc(salle.input)}</textarea>
      <div id="sallePrevWrap" style="margin-top:8px"></div>
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="analyseSalle">🔍 Analyser mon programme</button></div></div>
-   <div class="card"><h2>Analyse & recommandations</h2><div class="formatted" id="salleOut">${salle.analysis?fmt(salle.analysis):'<span class="muted">Aucune analyse pour le moment.</span>'}</div>${salle.updated?`<p class="muted" style="margin-top:8px">Analysé le ${new Date(salle.updated).toLocaleString("fr-FR")}</p>`:""}</div>`;
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="analyseSalle">✨ Améliorer mon programme</button></div></div>
+   <div class="card"><h2>Ton programme amélioré</h2><div class="formatted" id="salleOut">${salle.analysis?fmt(salle.analysis):'<span class="muted">Aucune analyse pour le moment.</span>'}</div>${salle.updated?`<p class="muted" style="margin-top:8px">Analysé le ${new Date(salle.updated).toLocaleString("fr-FR")}</p>`:""}</div>`;
   $("#sallePhoto").onclick=async()=>{const ims=await pickImages(1280);if(ims.length){sallePending=sallePending.concat(ims);$("#sallePrevWrap").innerHTML=`<div class="imgprev">${sallePending.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${sallePending.length} photo(s) jointe(s)</span><button class="ghost sm" id="rmS" style="margin-left:auto">✕</button></div>`;$("#rmS").onclick=()=>{sallePending=[];$("#sallePrevWrap").innerHTML="";};}};
   $("#analyseSalle").onclick=analyseSalle;
 }
@@ -628,18 +691,22 @@ async function analyseSalle(){
   const txt=$("#salleIn").value.trim();if(!txt&&!sallePending.length)return toast("Écris ton programme ou ajoute une photo.");
   salle.input=txt;save("salle",salle);const b=$("#analyseSalle");b.disabled=true;b.innerHTML='<span class="spin"></span> Analyse...';
   try{
-    const sys=`Tu es Kalos, coach sportif et de vie (kalokagathia). On te donne le PROGRAMME DE SALLE actuel (texte et/ou photo) et le PROFIL.
-Analyse-le et réponds en français, structuré, sous ces titres :
-## Lecture du programme (ce que je comprends)
-## Points forts
-## Points à améliorer / risques (tiens compte des contraintes : dos, genoux, asthme...)
-## Modifications proposées (concrètes : exercices, séries/reps, fréquence)
-## Objectifs à atteindre (progressifs et datés si possible, ex. tractions)
-Le concret prime, mais reste réaliste, sûr et durable.
+    const sys=`Tu es Kalos, coach sportif et de vie (kalokagathia). On te donne le PROGRAMME DE SALLE actuel (texte et/ou photo), le PROFIL et les OBJECTIFS de la personne.
+Ton rôle n'est PAS de seulement commenter : tu AMÉLIORES le programme pour l'amener vers ce qu'elle veut devenir.
+Réponds en français, structuré, sous ces titres :
+## Ce que je comprends (2 lignes : programme actuel + objectifs visés)
+## Ton programme amélioré — séance par séance
+Reprends CHAQUE séance en la complétant : Échauffement (5-8 min, ciblé sur les articulations sollicitées) → Exercices (séries × répétitions, remplace/ajoute si utile, ordre logique) → Fin de séance (retour au calme + souplesse/étirements ciblés).
+## Les jours sans salle — à la maison
+2 ou 3 mini-routines (10-15 min) : souplesse, gainage, mobilité, adaptées aux contraintes.
+## Pourquoi ces changements (3-5 puces courtes, reliées aux objectifs)
+## Progression sur 4-8 semaines (comment faire évoluer charges/volume)
+Concret, sûr, durable. Tiens compte STRICTEMENT des contraintes santé (dos, genoux, asthme...).
 ${SCI}`;
-    const msg={role:"user",text:"PROFIL:\n"+(profile.text||"(non renseigné)")+"\n\nPROGRAMME ACTUEL:\n"+(txt||"(voir photo)")};
+    const objs=(profile.card&&profile.card.objectifs&&profile.card.objectifs.length)?profile.card.objectifs.join(" · "):"";
+    const msg={role:"user",text:"PROFIL:\n"+(profile.text||"(non renseigné)")+(objs?("\n\nOBJECTIFS ACTUELS:\n"+objs):"")+(program.text?("\n\nPROGRAMME DE VIE (extrait):\n"+program.text.slice(0,1500)):"")+"\n\nPROGRAMME DE SALLE ACTUEL:\n"+(txt||"(voir photo)")};
     if(sallePending.length)msg.imgs=sallePending.map(i=>i.b64);
-    const r=await callAI({system:sys,messages:[msg],modelId:S.power,label:"analyse salle"});
+    const r=await callAI({system:sys,messages:[msg],modelId:S.power,label:"analyse salle",maxTokens:6000});
     salle.analysis=r.text;salle.updated=Date.now();save("salle",salle);sallePending=[];toast("Analyse prête ✓");render();
   }catch(e){toast(e.message);}finally{if(b){b.disabled=false;}}
 }
@@ -913,60 +980,35 @@ function rSuivi(){
 function renderTracking(){if(!tracking.length)return '<span class="muted">Aucune mesure.</span>';return `<table><tr><th>Date</th><th>Poids</th><th>Sommeil</th><th>Taille</th><th>Hanch.</th><th>Poitr.</th><th>Bras</th><th>Cuisse</th><th>Mol.</th><th>Én.</th><th>Note</th><th>Photo</th><th></th></tr>${tracking.map((t,i)=>`<tr><td>${esc(t.date)}</td><td>${esc(t.poids||"-")}</td><td>${t.somMin!=null&&t.somMin!==""?hm(t.somMin):"-"}${t.couch&&t.reve?`<br><span class="muted" style="font-size:11px">${esc(t.couch)}→${esc(t.reve)}</span>`:""}</td><td>${esc(t.taille||"-")}</td><td>${esc(t.hanch||"-")}</td><td>${esc(t.poit||"-")}</td><td>${esc(t.bras||"-")}</td><td>${esc(t.cuis||"-")}</td><td>${esc(t.mol||"-")}</td><td>${esc(t.ener||"-")}</td><td>${esc(t.note||"")}</td><td>${t.photo?`<img src="${t.photo}" class="thumb" style="max-width:54px;max-height:54px">`:"-"}</td><td><button class="btn sm ghost" data-del="${i}">✕</button></td></tr>`).join("")}</table>`;}
 
 function extractJSONobj(t){try{return JSON.parse(t);}catch(e){}const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1));}catch(e){}}return null;}
+let planDay=0; /* décalage en jours par rapport à aujourd'hui (négatif = passé) */
 function rCalendrier(){
   const p=planning.data;
+  const d=dateAt(planDay),dateS=dateISO(d);
+  const jo=p?jourObjFor(d):null;
+  const lab=planDay===0?"Aujourd'hui":(planDay===-1?"Hier":(planDay===1?"Demain":JOURS_FR[d.getDay()]));
+  const sub=(Math.abs(planDay)<=1)?d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}):d.toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
+  const rec=(p&&p.recettes)||[];
   $("#main").innerHTML=`<h1 class="page">📅 Planning</h1>${keyBanner()}
-   ${p?renderPlanning(p):`<div class="card"><button class="btn" id="genPlan" style="width:100%">✨ Générer ma semaine</button><p class="muted" style="margin:10px 0 0;font-size:13px;text-align:center">Jour par jour, à partir de ton programme.</p></div>`}
+   ${p?`<div class="daynav">
+      <button class="ghost sm" id="dPrev" title="Jour précédent">‹</button>
+      <div class="dlab"><b>${esc(lab)}</b><span class="muted" style="font-size:12.5px"> · ${esc(sub)}${planDay===0?` · <span id="nowClock">${nowHM()}</span>`:""}</span></div>
+      ${planDay!==0?`<button class="ghost sm" id="dToday">Auj.</button>`:""}
+      <button class="ghost sm" id="dNext" title="Jour suivant">›</button>
+    </div>
+    <div class="card">${renderDayItems(dateS,(jo&&jo.items)||[],false)}</div>`
+   :`<div class="card"><button class="btn" id="genPlan" style="width:100%">✨ Générer ma semaine</button><p class="muted" style="margin:10px 0 0;font-size:13px;text-align:center">Jour par jour, à partir de ton programme.</p></div>`}
    ${p?`<div class="card"><h2>🔧 Imprévu ?</h2><textarea id="planEvent" placeholder="ex. genou douloureux, déplacement mardi, plus de temps ce week-end…"></textarea><div style="margin-top:10px"><button class="btn" id="adaptPlan">🔄 Adapter mon planning</button></div>${planning.note?`<div class="formatted" style="margin-top:12px;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px"><b>Dernier ajustement :</b> ${esc(planning.note)}</div>`:""}</div>
+   ${rec.length?`<div class="card"><h2>🍽️ Recettes</h2>${rec.map((r,ri)=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="flex:1">${esc(r.nom||"")}</span><button class="ghost sm" data-info="r${ri}">ℹ️ Recette</button></div>
+        <div id="infor${ri}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${(r.ingredients&&r.ingredients.length)?("<b>Ingrédients :</b> "+esc(r.ingredients.join(", "))+"<br>"):""}${(r.etapes&&r.etapes.length)?("<b>Préparation :</b> "+esc(r.etapes.join(" "))+"<br>"):""}${r.pourquoi?("<b>Pourquoi :</b> "+esc(r.pourquoi)):""}</div>
+      </div>`).join("")}</div>`:""}
    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px"><button class="ghost sm" id="genPlan">✨ Régénérer la semaine</button><span class="muted" style="font-size:12px">${planning.updated?("MàJ "+new Date(planning.updated).toLocaleString("fr-FR")):""}</span></div>`:""}`;
   const gp=$("#genPlan");if(gp)gp.onclick=genPlanning;
   const ap=$("#adaptPlan");if(ap)ap.onclick=adaptPlanning;
+  const pv=$("#dPrev");if(pv)pv.onclick=()=>{planDay--;render();};
+  const nx=$("#dNext");if(nx)nx.onclick=()=>{planDay++;render();};
+  const td=$("#dToday");if(td)td.onclick=()=>{planDay=0;render();};
   bindPlanInfos();
-  document.querySelectorAll("[data-dayt]").forEach(b=>b.onclick=()=>{const d=$("#day"+b.dataset.dayt),c=$("#caret"+b.dataset.dayt);if(!d)return;const open=d.style.display!=="none";d.style.display=open?"none":"block";if(c)c.textContent=open?"▾":"▴";});
-}
-function renderPlanning(p){
-  const tn=todayJourName().toLowerCase();
-  const all=p.jours||[];
-  const ti=all.findIndex(j=>String(j.jour||"").toLowerCase()===tn);
-  const days=ti>0?all.slice(ti).concat(all.slice(0,ti)):all.slice();
-  let html="";
-  days.forEach((j,di)=>{
-    const ji=all.indexOf(j);
-    const isToday=String(j.jour||"").toLowerCase()===tn;
-    const items=j.items||[];
-    let body="";
-    items.forEach((it,ii)=>{
-      const pil=PILLARS[it.pilier]||{label:esc(it.pilier||""),color:"var(--grey)"};
-      body+=`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b>
-          <span style="flex:1">${esc(it.titre||"")}</span>
-          <span class="pill" style="background:${pil.color}">${pil.label}</span>
-          <button class="ghost sm" data-info="j${ji}i${ii}">ℹ️</button>
-        </div>
-        <div id="infoj${ji}i${ii}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${it.pourquoi?("<b>Pourquoi :</b> "+esc(it.pourquoi)+"<br>"):""}${it.comment?("<b>Comment :</b> "+esc(it.comment)):""}</div>
-      </div>`;
-    });
-    html+=`<div class="card"${isToday?' style="border-left:4px solid var(--accent)"':""}>
-      <button data-dayt="${di}" style="background:none;border:0;width:100%;display:flex;align-items:center;gap:9px;font:inherit;cursor:pointer;padding:0;color:var(--ink)">
-        <span style="font-size:17px;font-weight:700">${esc(j.jour||"")}</span>
-        ${isToday?`<span class="pill" style="background:var(--accent)">Aujourd'hui</span>`:""}
-        <span class="muted" style="margin-left:auto;font-size:12px">${items.length} action${items.length>1?"s":""} <span id="caret${di}">${isToday?"▴":"▾"}</span></span>
-      </button>
-      <div id="day${di}" style="display:${isToday?"block":"none"};margin-top:12px">${body||'<span class="muted">Rien de prévu.</span>'}</div>
-    </div>`;
-  });
-  if((p.recettes||[]).length){
-    html+=`<div class="card"><h2>🍽️ Recettes</h2>`;
-    p.recettes.forEach((r,ri)=>{
-      html+=`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
-        <div style="display:flex;align-items:center;gap:10px"><span style="flex:1">${esc(r.nom||"")}</span><button class="ghost sm" data-info="r${ri}">ℹ️ Recette</button></div>
-        <div id="infor${ri}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${(r.ingredients&&r.ingredients.length)?("<b>Ingrédients :</b> "+esc(r.ingredients.join(", "))+"<br>"):""}${(r.etapes&&r.etapes.length)?("<b>Préparation :</b> "+esc(r.etapes.join(" "))+"<br>"):""}${r.pourquoi?("<b>Pourquoi :</b> "+esc(r.pourquoi)):""}</div>
-      </div>`;
-    });
-    html+=`</div>`;
-  }
-  return html;
 }
 function bindPlanInfos(){document.querySelectorAll('[data-info]').forEach(b=>b.onclick=()=>{const d=$("#info"+b.dataset.info);if(d)d.style.display=(d.style.display==="none"?"block":"none");});}
 async function genPlanning(){
@@ -1033,15 +1075,17 @@ function rReglages(){
   $("#provSel").onchange=e=>{S.provider=e.target.value;S.cheap=MODELS[S.provider][0].id;S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;save("settings",S);render();};
   $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;save("settings",S);toast("Enregistré ✓");};
   $("#testKey").onclick=async()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;save("settings",S);if(!S.apiKey)return toast("Colle une clé.");const b=$("#testKey");b.disabled=true;b.innerHTML='<span class="spin"></span>';try{await callAI({system:"Réponds: OK.",messages:[{role:"user",text:"dis OK"}],modelId:S.cheap,label:"test"});toast("Clé OK ✓");}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent="🔌 Tester la clé";}};
-  $("#exportData").onclick=()=>{const dump={};["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>dump[k]=load(k));const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kalos-donnees.json";a.click();};
-  $("#importData").onclick=()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json,.json";inp.onchange=()=>{const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>{if(d[k]!==undefined)localStorage.setItem(K(k),JSON.stringify(d[k]));});toast("Import réussi ✓ rechargement...");setTimeout(()=>location.reload(),700);}catch(e){toast("Fichier invalide");}};rd.readAsText(f);};inp.click();};
-  $("#wipe").onclick=()=>{if(confirm("Tout effacer ? Irréversible.")){["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>localStorage.removeItem(K(k)));location.reload();}};
+  $("#exportData").onclick=()=>{const dump={};["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>dump[k]=load(k));const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kalos-donnees.json";a.click();};
+  $("#importData").onclick=()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json,.json";inp.onchange=()=>{const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>{if(d[k]!==undefined)localStorage.setItem(K(k),JSON.stringify(d[k]));});toast("Import réussi ✓ rechargement...");setTimeout(()=>location.reload(),700);}catch(e){toast("Fichier invalide");}};rd.readAsText(f);};inp.click();};
+  $("#wipe").onclick=()=>{if(confirm("Tout effacer ? Irréversible.")){["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>localStorage.removeItem(K(k)));location.reload();}};
   const _lb=$("#logoutBtn");if(_lb)_lb.onclick=doLogout;
 }
 
 document.addEventListener("click",e=>{const d=e.target.closest("[data-del]");if(d){const i=+d.dataset.del;tracking.splice(i,1);save("tracking",tracking);render();}});
 document.addEventListener("click",e=>{const n=e.target.closest("[data-nav]");if(n){navTo(n.dataset.nav);}});
 document.addEventListener("click",e=>{const d=e.target.closest("[data-delmeal]");if(d){const i=+d.dataset.delmeal;if(nutrition.meals){nutrition.meals.splice(i,1);save("nutrition",nutrition);render();}}});
+document.addEventListener("change",e=>{const c=e.target.closest("[data-plandone]");if(c){const s=c.getAttribute("data-plandone"),i=s.indexOf("~");if(i>0){setPlanDone(s.slice(0,i),decodeURIComponent(s.slice(i+1)),c.checked);render();}}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-pinfo]");if(b){const d=$("#pinfo"+b.dataset.pinfo);if(d)d.style.display=(d.style.display==="none"?"block":"none");}});
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}
 
 /* ===================== BARRE « OÙ TU EN ES ? » (pilote global) ===================== */
@@ -1126,10 +1170,10 @@ items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items ma
 /* ===================== COMPTES & SYNCHRO (Supabase) ===================== */
 const SB_URL="https://vwxwagotympjzoztjltv.supabase.co";
 const SB_KEY="sb_publishable_Ce5qJsMMujnEijotMu0zkw_YpeVDDKN";
-const ALLKEYS=["settings","profile","program","salle","nutrition","planning","checkin","quests","progress","coffre","tracking","costs","chat"];
+const ALLKEYS=["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"];
 let sb=null; try{ if(window.supabase) sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
 let currentUser=null, cloudTimer=null;
-function reloadState(){S=load("settings");profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");}
+function reloadState(){S=load("settings");profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");}
 function showAuth(msg){const o=$("#authOverlay");if(o){o.style.display="flex";if(msg!==undefined)$("#authMsg").textContent=msg;}}
 function hideAuth(){const o=$("#authOverlay");if(o)o.style.display="none";}
 function startApp(){hideAuth();buildNav();refreshLevel();render();}
@@ -1250,7 +1294,23 @@ function sleepWatchVisible(){
   proposeSleep(couch,reve);
 }
 
-document.addEventListener("visibilitychange",()=>{if(document.hidden){flushCloud();sleepWatchHidden();}else{sleepWatchVisible();}});
+/* ===== Horloge temps réel : l'interface suit l'heure et le jour ===== */
+let _tickDay=null,_tickMin=null;
+function tickNow(){try{
+  const ds=todayStr(),hmn=nowHM();
+  if(_tickDay===null){_tickDay=ds;_tickMin=hmn;return;}
+  if(ds!==_tickDay){_tickDay=ds;_tickMin=hmn;planDay=0;if(document.getElementById("main")){buildNav();render();}return;}
+  if(hmn===_tickMin)return;
+  _tickMin=hmn;
+  const ck=document.getElementById("nowClock");if(ck)ck.textContent=hmn;
+  const ae=document.activeElement;
+  const typing=ae&&(ae.tagName==="TEXTAREA"||(ae.tagName==="INPUT"&&ae.type!=="checkbox"));
+  if(typing)return;
+  if(current==="accueil")render();
+  else if(current==="calendrier"){const pe=document.getElementById("planEvent");if(!pe||!pe.value.trim())render();}
+}catch(e){}}
+setInterval(tickNow,30000);
+document.addEventListener("visibilitychange",()=>{if(document.hidden){flushCloud();sleepWatchHidden();}else{sleepWatchVisible();tickNow();}});
 window.addEventListener("pagehide",()=>{flushCloud();sleepWatchHidden();});
 window.addEventListener("load",()=>{setTimeout(()=>{try{sleepWatchVisible();}catch(e){}},1600);});
 boot();
