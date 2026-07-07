@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v34";
+const APP_VERSION="v35";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -517,13 +517,41 @@ RÈGLES ABSOLUES :
 - Tu apprends EN OBSERVANT : chaque message contient des infos (habitudes, goûts, contraintes, lieux, humeur). Retiens-les et utilise-les — ne fais jamais répéter la personne.
 - Si une FICHE PROFIL existe déjà : AUCUN entretien. Salue en une phrase et apporte directement de la valeur (proposition concrète adaptée à l'heure et au planning du jour).
 - Si la personne demande quelque chose de concret (programme, planning de la semaine ou de la semaine prochaine, conseil), tu le FAIS immédiatement au lieu de poser des questions.
+- ACCÈS TOTAL : tu REÇOIS plus bas les données de TOUTES les sections de l'app (profil, programme de vie, salle, nutrition, suivi, quêtes, planning du jour). Ne dis JAMAIS que tu n'as pas accès à une section : lis les données fournies et sers-t'en.
 Termine TOUJOURS ton message par une ligne, au format EXACT :
 OPTIONS: réponse courte 1 | réponse courte 2 | réponse courte 3
 en proposant 2 à 4 réponses rapides que la personne peut choisir d'un simple tap (elle peut aussi répondre librement).
 Quand tu en sais assez, dis-le en une phrase et propose OPTIONS: Générer mon profil | Continuer.
-Si la personne te demande de MODIFIER ou CONSTRUIRE son planning (cette semaine ou la prochaine : déplacer, ajouter, réduire, « fais ma semaine », « pas le temps mardi »...), confirme en une phrase, PUIS ajoute tout à la fin une ligne au format EXACT : ACTION: PLANNING | description claire et complète de la demande. N'ajoute cette ligne QUE pour une vraie demande de planning.
+MODIFIER LES SECTIONS : quand la personne demande un changement concret, confirme en une phrase PUIS ajoute tout à la fin UNE ligne au format EXACT « ACTION: TYPE | description claire et complète de la demande », avec TYPE parmi :
+- PLANNING (planning de la semaine : déplacer, ajouter, réduire, « fais ma semaine », « pas le temps mardi »...)
+- SALLE (programme d'entraînement : exercices, séances, échauffements, objectifs sportifs...)
+- PROGRAMME (programme de vie, les 6 piliers)
+- NUTRITION (conseils repas, courses, régime)
+- QUETES (quêtes du jour)
+Une seule ligne ACTION par message, et UNIQUEMENT pour une vraie demande de modification (jamais pour une simple question).
 Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.`;
 const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
+/* Contexte complet injecté au Coach : il voit toutes les sections de l'app */
+function coachContext(){
+  let c="";
+  if(program.text)c+="\n\n=== SECTION PROGRAMME DE VIE (onglet Programme) ===\n"+program.text.slice(0,1800);
+  if(salle.input||salle.analysis){
+    c+="\n\n=== SECTION SALLE (onglet Salle) ===";
+    if(salle.input)c+="\nProgramme d'entraînement donné par la personne :\n"+salle.input.slice(0,1400);
+    if(salle.analysis)c+="\nDernière version améliorée par Kalos (extrait) :\n"+salle.analysis.slice(0,1500);
+  }
+  const nut=[];
+  if(nutrition.budget)nut.push("budget "+nutrition.budget+" €/sem");
+  if(nutrition.region)nut.push("région "+nutrition.region);
+  if(nutrition.prefs)nut.push("préférences : "+nutrition.prefs);
+  if(nutrition.allergies)nut.push("allergies : "+nutrition.allergies);
+  if(nutrition.regime)nut.push("régime : "+nutrition.regime);
+  if(nut.length||nutrition.advice)c+="\n\n=== SECTION NUTRITION (onglet Nutrition) ===\n"+nut.join(" · ")+(nutrition.advice?("\nConseils actuels (extrait) :\n"+nutrition.advice.slice(0,700)):"");
+  const ts=trackingSummary();
+  if(ts)c+="\n\n=== SECTION SUIVI (mesures récentes) ===\n"+ts;
+  if(quests.date===todayStr()&&quests.items.length)c+="\n\n=== QUÊTES DU JOUR ===\n"+quests.items.map(q=>(q.done?"[fait] ":"[à faire] ")+q.text).join("\n");
+  return c;
+}
 let pendingImgs=[];
 function rDecouverte(){
   $("#main").innerHTML=`<h1 class="page">🧭 Coach</h1><p class="sub">Kalos apprend à te connaître <b>petit à petit</b>, au fil de la conversation. Réponds quand tu veux — pas besoin de tout dire d'un coup. Dès que tu lui as donné quelques infos, crée ton plan.</p>${keyBanner()}
@@ -549,7 +577,7 @@ function rDecouverte(){
 }
 function drawPrev(){const w=$("#prevWrap");if(!w)return;if(!pendingImgs.length){w.innerHTML="";return;}w.innerHTML=`<div class="imgprev">${pendingImgs.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${pendingImgs.length} photo(s) prête(s)</span><button class="ghost sm" id="rmImg" style="margin-left:auto">✕</button></div>`;$("#rmImg").onclick=()=>{pendingImgs=[];drawPrev();};}
 function parseOptions(t){t=t||"";const m=t.match(/OPTIONS:\s*(.+)\s*$/im);const options=m?m[1].split("|").map(s=>s.trim()).filter(Boolean).slice(0,4):[];const clean=t.replace(/\n?\s*OPTIONS:.*$/im,"").replace(/\n?\s*ACTION:.*$/im,"").trim();return{clean,options};}
-function parseAction(t){const m=(t||"").match(/ACTION:\s*PLANNING\s*\|\s*(.+?)\s*$/im);return m?m[1].trim():null;}
+function parseAction(t){const m=(t||"").match(/ACTION:\s*(PLANNING|SALLE|PROGRAMME|NUTRITION|QUETES)\s*\|\s*(.+?)\s*$/im);return m?{type:m[1].toUpperCase(),req:m[2].trim()}:null;}
 function drawChat(){const box=$("#chat");if(!box)return;box.innerHTML=chat.length?chat.map(m=>{const txt=m.role==="assistant"?parseOptions(m.text).clean:m.text;return `<div class="msg ${m.role==="assistant"?"ai":"me"}">${m.photo?("📷"+(m.nph>1?"×"+m.nph:"")+" "):""}${esc(txt)}</div>`;}).join(""):`<div class="muted" style="padding:8px">Clique « Démarrer » pour commencer.</div>`;box.scrollTop=box.scrollHeight;renderQuick();}
 function renderQuick(){const q=$("#quickReplies");if(!q)return;const last=chat[chat.length-1];if(!last||last.role!=="assistant"){q.innerHTML="";return;}const o=parseOptions(last.text).options;q.innerHTML=o.map(x=>`<button class="ghost sm" data-quick="${esc(x).replace(/"/g,'&#34;')}">${esc(x)}</button>`).join("");q.querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>{const v=b.getAttribute("data-quick");if(/profil/i.test(v)){genProfile();return;}const inp=$("#chatIn");if(inp){inp.value=v;sendDiscovery();}});}
 async function startDiscovery(){if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");chat=[];save("chat",chat);drawChat();await aiTurn(true);}
@@ -561,11 +589,24 @@ async function aiTurn(first,imgs){
     if(first){msgs=[{role:"user",text:profile.text?"(Reprise de conversation) Salue-moi en une phrase et propose-moi directement quelque chose d'utile pour maintenant, selon l'heure et mon planning. Pas de questions d'entretien.":"Première rencontre : présente-toi en une phrase, pose UNE seule question ouverte (qui je suis, ce que je veux changer), et propose des OPTIONS."}];}
     else{msgs=chat.map(m=>({role:m.role==="assistant"?"assistant":"user",text:m.text}));if(imgs&&imgs.length){msgs[msgs.length-1]={role:"user",text:chat[chat.length-1].text,imgs:imgs};}}
     const pctx=profile.text?"\n\nFICHE PROFIL ACTUELLE (déjà connue — ne redemande RIEN de ce qui s'y trouve, appuie-toi dessus) :\n"+profile.text.slice(0,2500):"";
-    const r=await callAI({system:DISCOVERY_SYSTEM+pctx,messages:msgs,modelId:S.cheap,label:"découverte"});
+    const r=await callAI({system:DISCOVERY_SYSTEM+pctx+coachContext(),messages:msgs,modelId:S.cheap,label:"découverte"});
     chat.push({role:"assistant",text:r.text});save("chat",chat);drawChat();
     maybeLearnProfile();
     const act=parseAction(r.text);
-    if(act){ if(planning.data){ try{const note=await applyPlanningChange(act);chat.push({role:"assistant",text:"✓ Planning mis à jour. "+(note||"")});save("chat",chat);drawChat();toast("Planning mis à jour ✓");}catch(e){toast(e.message);} } else { toast("Génère d'abord un planning (onglet Planning)."); } }
+    if(act){
+      try{
+        let note="";
+        if(act.type==="PLANNING"){
+          if(!planning.data){toast("Génère d'abord un planning (onglet Planning).");}
+          else{const n=await applyPlanningChange(act.req);note="✓ Planning mis à jour. "+(n||"");}
+        }
+        else if(act.type==="SALLE")note=await applySalleChange(act.req);
+        else if(act.type==="PROGRAMME")note=await applyProgramChange(act.req);
+        else if(act.type==="NUTRITION")note=await applyNutritionChange(act.req);
+        else if(act.type==="QUETES")note=await applyQuestsChange(act.req);
+        if(note){chat.push({role:"assistant",text:note});save("chat",chat);drawChat();toast("Mis à jour ✓");}
+      }catch(e){toast(e.message);}
+    }
   }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="Envoyer";}}
 }
 async function genProfile(){
@@ -1041,6 +1082,37 @@ Maximum 4 items par jour. N'inclus PAS de recettes. `+SCI;
   planning={data:{jours:data.jours,recettes:(planning.data.recettes||[])},updated:Date.now(),note:data.note||""};
   save("planning",planning);
   return planning.note;
+}
+/* ===== Actions du Coach sur les autres sections ===== */
+async function applySalleChange(req){
+  const sys=`Tu es Kalos, coach sportif (kalokagathia). Tu CRÉES ou MODIFIES le programme de salle amélioré selon la DEMANDE, en gardant cette structure : ## Ce que je comprends, ## Ton programme amélioré — séance par séance (échauffement ciblé → exercices avec séries × répétitions → retour au calme + souplesse), ## Les jours sans salle — à la maison, ## Pourquoi ces changements, ## Progression sur 4-8 semaines. Tiens compte STRICTEMENT des contraintes santé (dos, genoux, asthme...). Renvoie le document COMPLET mis à jour. `+SCI;
+  const ctx="PROFIL:\n"+String(profile.text||"-").slice(0,1200)+"\n\nPROGRAMME DONNÉ PAR LA PERSONNE:\n"+(salle.input||"(vide)")+"\n\nVERSION AMÉLIORÉE ACTUELLE:\n"+(salle.analysis||"(aucune — crée-la)")+"\n\nDEMANDE:\n"+req;
+  const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.power,label:"salle (coach)",maxTokens:6000});
+  salle.analysis=r.text;salle.updated=Date.now();save("salle",salle);
+  return "✓ Programme de salle mis à jour — va voir l'onglet Salle.";
+}
+async function applyProgramChange(req){
+  const sys=`Tu es Kalos (kalokagathia). Tu CRÉES ou MODIFIES le PROGRAMME DE VIE selon la DEMANDE, en gardant la structure en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations) avec 1 objectif clair + 2 à 4 actions concrètes par pilier. Réaliste, progressif, durable. Renvoie le programme COMPLET mis à jour. `+SCI;
+  const ctx="PROFIL:\n"+String(profile.text||"-").slice(0,1500)+"\n\nPROGRAMME ACTUEL:\n"+(program.text||"(aucun — crée-le)")+"\n\nDEMANDE:\n"+req;
+  const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.power,label:"programme (coach)",maxTokens:6000});
+  program.text=r.text;program.updated=Date.now();save("program",program);
+  return "✓ Programme de vie mis à jour — va voir l'onglet Programme.";
+}
+async function applyNutritionChange(req){
+  const sys=`Tu es Kalos, coach nutrition (kalokagathia). Tu CRÉES ou MODIFIES les conseils nutrition selon la DEMANDE, en gardant la structure : ## Principes pour toi, ## Idées de repas, ## Exemple de semaine, ## Liste de courses, ## À éviter / vigilance. RESPECTE STRICTEMENT les allergies et le budget. Renvoie le document COMPLET mis à jour. `+SCI;
+  const ctx="PROFIL:\n"+String(profile.text||"-").slice(0,1200)+"\n\nCONTRAINTES: budget "+(nutrition.budget||"?")+" €/sem · région "+(nutrition.region||"-")+" · préférences "+(nutrition.prefs||"-")+" · allergies "+(nutrition.allergies||"aucune")+" · régime "+(nutrition.regime||"aucun")+"\n\nCONSEILS ACTUELS:\n"+(nutrition.advice||"(aucun — crée-les)")+"\n\nDEMANDE:\n"+req;
+  const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.power,label:"nutrition (coach)",maxTokens:6000});
+  nutrition.advice=r.text;nutrition.updated=Date.now();save("nutrition",nutrition);
+  return "✓ Conseils nutrition mis à jour — va voir l'onglet Nutrition.";
+}
+async function applyQuestsChange(req){
+  const sys='Tu mets à jour les QUÊTES du jour selon la DEMANDE et le PROGRAMME. Réponds UNIQUEMENT par un tableau JSON valide : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. 3 à 7 quêtes, xp entre 5 et 25, pillar exactement l\'une des 6 valeurs en minuscules.';
+  const ctx="PROGRAMME:\n"+String(program.text||"-").slice(0,2500)+"\n\nQUÊTES ACTUELLES:\n"+(quests.date===todayStr()&&quests.items.length?quests.items.map(q=>(q.done?"[fait] ":"")+q.text).join("\n"):"(aucune)")+"\n\nDEMANDE:\n"+req;
+  const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"quêtes (coach)"});
+  const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)throw new Error("Réponse non exploitable, réessaie.");
+  quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
+  save("quests",quests);
+  return "✓ Quêtes du jour mises à jour — va voir l'Accueil.";
 }
 async function adaptPlanning(){
   if(!S.apiKey)return toast("Ajoute une clé API.");
