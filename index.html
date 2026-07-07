@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v36";
+const APP_VERSION="v37";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -225,11 +225,12 @@ const DEFAULTS={
   checkin:{date:"",mood:""},
   quests:{date:"",items:[]},progress:{xp:0,pillars:{sante:0,esprit:0,culture:0,art:0,travail:0,relations:0}},
   coffre:{balance:0,lastMonth:"",rewards:[]},tracking:[],costs:[],chat:[],
+  coach:{lastReview:null,memUpto:0,memory:[]},
 };
 const K=(k)=>"kalos_"+k;
 function load(k){try{const v=localStorage.getItem(K(k));return v?JSON.parse(v):structuredClone(DEFAULTS[k]);}catch(e){return structuredClone(DEFAULTS[k]);}}
 function save(k,v){try{localStorage.setItem(K(k),JSON.stringify(v));localStorage.setItem("kalos__chg",String(Date.now()));}catch(e){toast("Stockage plein — exporte/efface des photos.");}cloudSave();}
-let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),planlog=load("planlog"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat");
+let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),planlog=load("planlog"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat"),coachSt=load("coach");
 const $=(s,el=document)=>el.querySelector(s);
 const esc=(t)=>(t||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2600);}
@@ -529,11 +530,13 @@ MODIFIER LES SECTIONS : quand la personne demande un changement concret, confirm
 - NUTRITION (conseils repas, courses, régime)
 - QUETES (quêtes du jour)
 Une seule ligne ACTION par message, et UNIQUEMENT pour une vraie demande de modification (jamais pour une simple question).
+L'app demande CONFIRMATION à la personne avant d'appliquer une ACTION : formule ta phrase comme une proposition (« je te prépare ça ? »), jamais comme un fait accompli.
 Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.`;
 const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
 /* Contexte complet injecté au Coach : il voit toutes les sections de l'app */
 function coachContext(){
   let c="";
+  if(coachSt.memory&&coachSt.memory.length)c+="\n\n=== MÉMOIRE DES CONVERSATIONS PASSÉES (résumés — appuie-toi dessus pour la continuité) ===\n"+coachSt.memory.slice(-8).map(m=>"["+m.d+"] "+m.t).join("\n");
   if(program.text)c+="\n\n=== SECTION PROGRAMME DE VIE (onglet Programme) ===\n"+program.text.slice(0,1800);
   if(salle.input||salle.analysis){
     c+="\n\n=== SECTION SALLE (onglet Salle) ===";
@@ -559,6 +562,21 @@ function coachContext(){
   return c;
 }
 let pendingImgs=[];
+/* — ACTION du coach en attente de confirmation (carte inline dans le chat) — */
+let pendingAction=null;
+const ACT_LBL={PLANNING:"📅 Planning",SALLE:"🏋️ Salle",PROGRAMME:"🌿 Programme de vie",NUTRITION:"🥗 Nutrition",QUETES:"⚔️ Quêtes"};
+async function runCoachAction(act){
+  let note="";
+  if(act.type==="PLANNING"){
+    if(!planning.data){toast("Génère d'abord un planning (onglet Planning).");return "";}
+    const n=await applyPlanningChange(act.req);note="✓ Planning mis à jour. "+(n||"");
+  }
+  else if(act.type==="SALLE")note=await applySalleChange(act.req);
+  else if(act.type==="PROGRAMME")note=await applyProgramChange(act.req);
+  else if(act.type==="NUTRITION")note=await applyNutritionChange(act.req);
+  else if(act.type==="QUETES")note=await applyQuestsChange(act.req);
+  return note;
+}
 function rDecouverte(){
   $("#main").innerHTML=`<h1 class="page">🧭 Coach</h1><p class="sub">Kalos apprend à te connaître <b>petit à petit</b>, au fil de la conversation. Réponds quand tu veux — pas besoin de tout dire d'un coup. Dès que tu lui as donné quelques infos, crée ton plan.</p>${keyBanner()}
    <div class="card"><div class="chat" id="chat"></div><div id="quickReplies" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div><div id="prevWrap"></div>
@@ -569,24 +587,37 @@ function rDecouverte(){
        <button class="btn" id="coachPlan" style="width:100%">✨ Créer / mettre à jour mon plan</button>
        <p class="muted" id="coachPlanStatus" style="text-align:center;margin:8px 0 0;font-size:13px"></p></div>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+       <button class="ghost sm" id="reviewBtn">📊 Bilan de la semaine</button>
        <button class="ghost sm" id="startBtn">▶︎ Relancer la discussion</button>
        <button class="ghost sm" id="genProfileBtn">🪪 Mettre à jour le profil</button>
        <button class="ghost sm" id="toForm">📝 Plutôt un court formulaire</button>
        <button class="ghost sm" id="clearChat">🗑 Effacer</button></div></div>`;
   drawChat();drawPrev();
-  $("#startBtn").onclick=startDiscovery;$("#sendBtn").onclick=sendDiscovery;$("#genProfileBtn").onclick=genProfile;$("#coachPlan").onclick=coachCreerPlan;
+  $("#startBtn").onclick=startDiscovery;$("#sendBtn").onclick=sendDiscovery;$("#genProfileBtn").onclick=genProfile;$("#coachPlan").onclick=coachCreerPlan;$("#reviewBtn").onclick=()=>weeklyReview(false);
   $("#toForm").onclick=()=>navTo("demarrage");
   $("#photoBtn").onclick=async()=>{const ims=await pickImages();if(ims.length){pendingImgs=pendingImgs.concat(ims);drawPrev();}};
-  $("#clearChat").onclick=()=>{if(confirm("Effacer la conversation ?")){chat=[];save("chat",chat);drawChat();}};
+  $("#clearChat").onclick=async()=>{if(confirm("Effacer la conversation ?")){await maybeSummarizeChat(true);pendingAction=null;chat=[];save("chat",chat);coachSt.memUpto=0;save("coach",coachSt);drawChat();}};
   $("#chatIn").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendDiscovery();}});
   if(!chat.length&&S.apiKey)startDiscovery();
+  else if(S.apiKey)weeklyReview(true); /* bilan hebdo proactif si ≥7 j depuis le dernier */
 }
 function drawPrev(){const w=$("#prevWrap");if(!w)return;if(!pendingImgs.length){w.innerHTML="";return;}w.innerHTML=`<div class="imgprev">${pendingImgs.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${pendingImgs.length} photo(s) prête(s)</span><button class="ghost sm" id="rmImg" style="margin-left:auto">✕</button></div>`;$("#rmImg").onclick=()=>{pendingImgs=[];drawPrev();};}
 function parseOptions(t){t=t||"";const m=t.match(/OPTIONS:\s*(.+)\s*$/im);const options=m?m[1].split("|").map(s=>s.trim()).filter(Boolean).slice(0,4):[];const clean=t.replace(/\n?\s*OPTIONS:.*$/im,"").replace(/\n?\s*ACTION:.*$/im,"").trim();return{clean,options};}
 function parseAction(t){const m=(t||"").match(/ACTION:\s*(PLANNING|SALLE|PROGRAMME|NUTRITION|QUETES)\s*\|\s*(.+?)\s*$/im);return m?{type:m[1].toUpperCase(),req:m[2].trim()}:null;}
-function drawChat(){const box=$("#chat");if(!box)return;box.innerHTML=chat.length?chat.map(m=>{const txt=m.role==="assistant"?parseOptions(m.text).clean:m.text;return `<div class="msg ${m.role==="assistant"?"ai":"me"}">${m.photo?("📷"+(m.nph>1?"×"+m.nph:"")+" "):""}${esc(txt)}</div>`;}).join(""):`<div class="muted" style="padding:8px">Clique « Démarrer » pour commencer.</div>`;box.scrollTop=box.scrollHeight;renderQuick();}
+function drawChat(){const box=$("#chat");if(!box)return;let html=chat.length?chat.map(m=>{const txt=m.role==="assistant"?parseOptions(m.text).clean:m.text;return `<div class="msg ${m.role==="assistant"?"ai":"me"}">${m.photo?("📷"+(m.nph>1?"×"+m.nph:"")+" "):""}${esc(txt)}</div>`;}).join(""):`<div class="muted" style="padding:8px">Clique « Démarrer » pour commencer.</div>`;
+  if(pendingAction){const lbl=ACT_LBL[pendingAction.type]||pendingAction.type;
+    html+=`<div class="msg ai" style="border:1.5px solid var(--accent);max-width:92%"><b>${lbl} — modification proposée</b>\n${esc(pendingAction.req)}\n<div style="display:flex;gap:8px;margin-top:9px"><button class="btn sm" id="actGo">✓ Appliquer</button><button class="ghost sm" id="actNo">Ignorer</button></div></div>`;}
+  box.innerHTML=html;box.scrollTop=box.scrollHeight;
+  if(pendingAction){
+    const go=$("#actGo"),no=$("#actNo");
+    if(go)go.onclick=async()=>{go.disabled=true;if(no)no.disabled=true;go.innerHTML='<span class="spin"></span>';const act=pendingAction;
+      try{const note=await runCoachAction(act);pendingAction=null;if(note){chat.push({role:"assistant",text:note});save("chat",chat);toast("Mis à jour ✓");}drawChat();}
+      catch(e){go.disabled=false;if(no)no.disabled=false;go.textContent="✓ Appliquer";toast(e.message);}};
+    if(no)no.onclick=()=>{pendingAction=null;drawChat();};
+  }
+  renderQuick();}
 function renderQuick(){const q=$("#quickReplies");if(!q)return;const last=chat[chat.length-1];if(!last||last.role!=="assistant"){q.innerHTML="";return;}const o=parseOptions(last.text).options;q.innerHTML=o.map(x=>`<button class="ghost sm" data-quick="${esc(x).replace(/"/g,'&#34;')}">${esc(x)}</button>`).join("");q.querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>{const v=b.getAttribute("data-quick");if(/profil/i.test(v)){genProfile();return;}const inp=$("#chatIn");if(inp){inp.value=v;sendDiscovery();}});}
-async function startDiscovery(){if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");chat=[];save("chat",chat);drawChat();await aiTurn(true);}
+async function startDiscovery(){if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");await maybeSummarizeChat(true);pendingAction=null;chat=[];save("chat",chat);coachSt.memUpto=0;save("coach",coachSt);drawChat();await aiTurn(true);}
 async function sendDiscovery(){const inp=$("#chatIn");const t=inp.value.trim();if(!t&&!pendingImgs.length)return;if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");const imgs=pendingImgs.map(i=>i.b64);pendingImgs=[];drawPrev();chat.push({role:"user",text:t||"(photos)",photo:imgs.length>0,nph:imgs.length});save("chat",chat);inp.value="";drawChat();await aiTurn(false,imgs);}
 async function aiTurn(first,imgs){
   const btn=$("#sendBtn");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
@@ -595,24 +626,13 @@ async function aiTurn(first,imgs){
     if(first){msgs=[{role:"user",text:profile.text?"(Reprise de conversation) Salue-moi en une phrase et propose-moi directement quelque chose d'utile pour maintenant, selon l'heure et mon planning. Pas de questions d'entretien.":"Première rencontre : présente-toi en une phrase, pose UNE seule question ouverte (qui je suis, ce que je veux changer), et propose des OPTIONS."}];}
     else{msgs=chat.map(m=>({role:m.role==="assistant"?"assistant":"user",text:m.text}));if(imgs&&imgs.length){msgs[msgs.length-1]={role:"user",text:chat[chat.length-1].text,imgs:imgs};}}
     const pctx=profile.text?"\n\nFICHE PROFIL ACTUELLE (déjà connue — ne redemande RIEN de ce qui s'y trouve, appuie-toi dessus) :\n"+profile.text.slice(0,2500):"";
-    const r=await callAI({system:DISCOVERY_SYSTEM+pctx+coachContext(),messages:msgs,modelId:S.cheap,label:"découverte"});
-    chat.push({role:"assistant",text:r.text});save("chat",chat);drawChat();
-    maybeLearnProfile();
+    const mid=first?S.cheap:pickChatModel((chat[chat.length-1]||{}).text,imgs&&imgs.length>0);
+    const r=await callAI({system:DISCOVERY_SYSTEM+pctx+coachContext(),messages:msgs,modelId:mid,label:"découverte"});
+    chat.push({role:"assistant",text:r.text});save("chat",chat);
+    maybeLearnProfile();maybeSummarizeChat();
     const act=parseAction(r.text);
-    if(act){
-      try{
-        let note="";
-        if(act.type==="PLANNING"){
-          if(!planning.data){toast("Génère d'abord un planning (onglet Planning).");}
-          else{const n=await applyPlanningChange(act.req);note="✓ Planning mis à jour. "+(n||"");}
-        }
-        else if(act.type==="SALLE")note=await applySalleChange(act.req);
-        else if(act.type==="PROGRAMME")note=await applyProgramChange(act.req);
-        else if(act.type==="NUTRITION")note=await applyNutritionChange(act.req);
-        else if(act.type==="QUETES")note=await applyQuestsChange(act.req);
-        if(note){chat.push({role:"assistant",text:note});save("chat",chat);drawChat();toast("Mis à jour ✓");}
-      }catch(e){toast(e.message);}
-    }
+    if(act)pendingAction=act;
+    drawChat();
   }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="Envoyer";}}
 }
 async function genProfile(){
@@ -639,6 +659,81 @@ async function maybeLearnProfile(){
     if(r.text&&r.text.trim().length>40){profile.text=r.text.trim();profile.updated=Date.now();}
     profile.learnedUpto=chat.length;save("profile",profile);
   }catch(e){}finally{_learnBusy=false;}
+}
+/* — Routage auto du modèle : léger pour le bavardage, puissant pour l'analyse — */
+function pickChatModel(txt,hasImgs){
+  if(hasImgs)return S.power;
+  const t=(txt||"").toLowerCase();
+  if(t.length>240)return S.power;
+  if(/(explique|analyse|détaille|compare|pourquoi|conseille|stratégie|bilan|approfondi|en profondeur|justifie)/.test(t))return S.power;
+  return S.cheap;
+}
+/* — Mémoire longue durée : résumés datés des conversations, injectés dans coachContext — */
+let _memBusy=false;
+async function maybeSummarizeChat(force){
+  if(_memBusy||!S.apiKey)return;
+  const upto=+(coachSt.memUpto||0);
+  if(upto>chat.length){coachSt.memUpto=chat.length;save("coach",coachSt);return;}
+  const slice=chat.slice(upto);
+  if(slice.length<(force?4:10))return;
+  if(!slice.some(m=>m.role==="user"))return;
+  _memBusy=true;
+  try{
+    const conv=slice.map(m=>(m.role==="assistant"?"Coach: ":"Personne: ")+m.text).join("\n").slice(0,6000);
+    const sys="Résume cet échange de coaching en 1 à 3 lignes UTILES POUR PLUS TARD : décisions prises, demandes de la personne, préférences exprimées, points à suivre. Pas de généralités ni de préambule. Français, max 3 lignes.";
+    const r=await callAI({system:sys,messages:[{role:"user",text:conv}],modelId:S.cheap,label:"mémoire",maxTokens:300});
+    if(r.text&&r.text.trim())coachSt.memory=(coachSt.memory||[]).concat([{d:todayStr(),t:r.text.trim().slice(0,500)}]).slice(-15);
+    coachSt.memUpto=chat.length;save("coach",coachSt);
+  }catch(e){}finally{_memBusy=false;}
+}
+/* — Bilan hebdo proactif : le coach prend l'initiative — */
+function weekData(){
+  const days=[];let done=0,tot=0;
+  for(let i=6;i>=0;i--){
+    const d=dateAt(-i),ds=dateISO(d),jo=jourObjFor(d);
+    if(jo&&jo.items&&jo.items.length){
+      const dl=planlog[ds]||{};const dd=jo.items.filter(it=>dl[itemKey(it)]).length;
+      done+=dd;tot+=jo.items.length;
+      days.push(ds+" : "+dd+"/"+jo.items.length+" fait");
+    }
+  }
+  let out="DONNÉES DE LA SEMAINE ÉCOULÉE (7 derniers jours) :";
+  out+="\n- Planning : "+(tot?(done+"/"+tot+" actions faites — "+days.join(" · ")):"pas de planning actif");
+  const week=tracking.filter(t=>t.date>=dateISO(dateAt(-6)));
+  const sl=week.filter(t=>t.somMin).map(t=>t.somMin);
+  if(sl.length)out+="\n- Sommeil moyen : "+hm(Math.round(sl.reduce((a,b)=>a+b,0)/sl.length))+" sur "+sl.length+" nuit(s)";
+  const en=week.filter(t=>t.ener).map(t=>+t.ener);
+  if(en.length)out+="\n- Énergie moyenne : "+(en.reduce((a,b)=>a+b,0)/en.length).toFixed(1)+"/10";
+  const meals=(nutrition.meals||[]).filter(m=>m.date>=dateISO(dateAt(-6)));
+  const byDay={};meals.forEach(m=>{byDay[m.date]=byDay[m.date]||{k:0,p:0};byDay[m.date].k+=(+m.kcal||0);byDay[m.date].p+=(+m.prot||0);});
+  const mdays=Object.keys(byDay).sort();
+  if(mdays.length){
+    out+="\n- Nutrition ("+mdays.length+" jour(s) noté(s)) : "+mdays.map(d=>d.slice(5)+" ~"+Math.round(byDay[d].k)+" kcal / "+Math.round(byDay[d].p)+" g prot").join(" · ");
+    if(nutrition.targets)out+="\n  Objectifs quotidiens : "+nutrition.targets.kcal+" kcal · "+nutrition.targets.prot+" g prot";
+  }
+  const ts=trackingSummary();
+  if(ts)out+="\n- Mesures :\n"+ts;
+  return out;
+}
+let _reviewBusy=false;
+async function weeklyReview(auto){
+  if(_reviewBusy||!S.apiKey)return;
+  if(auto){
+    if(!profile.text)return;
+    if(!planning.data&&!tracking.length)return;
+    if(coachSt.lastReview&&(Date.now()-coachSt.lastReview)<6.5*dayMs)return;
+  }
+  _reviewBusy=true;
+  const b=$("#reviewBtn");if(b){b.disabled=true;b.innerHTML='<span class="spin"></span>';}
+  try{
+    const sys=DISCOVERY_SYSTEM+"\n\nTÂCHE SPÉCIALE — BILAN HEBDO : c'est TOI qui prends l'initiative (la personne n'a rien demandé). À partir des DONNÉES DE LA SEMAINE fournies, fais un bilan court et chaleureux : 1) 2-3 réussites concrètes, 2) 1-2 points à améliorer sans culpabiliser, 3) UNE proposition d'ajustement concrète pour la semaine qui vient (si pertinent, termine par la ligne ACTION correspondante). Maximum ~10 lignes avant la ligne OPTIONS."+(profile.text?"\n\nFICHE PROFIL :\n"+profile.text.slice(0,2000):"")+coachContext();
+    const r=await callAI({system:sys,messages:[{role:"user",text:weekData()+"\n\nFais mon bilan de la semaine."}],modelId:S.power,label:"bilan hebdo",maxTokens:1600});
+    chat.push({role:"assistant",text:"📊 Bilan de la semaine\n\n"+r.text});save("chat",chat);
+    coachSt.lastReview=Date.now();save("coach",coachSt);
+    const act=parseAction(r.text);if(act)pendingAction=act;
+    drawChat();
+  }catch(e){if(!auto)toast(e.message);}
+  finally{_reviewBusy=false;const b2=$("#reviewBtn");if(b2){b2.disabled=false;b2.textContent="📊 Bilan de la semaine";}}
 }
 
 async function coachCreerPlan(){
@@ -1221,9 +1316,9 @@ function rReglages(){
   $("#provSel").onchange=e=>{S.provider=e.target.value;S.cheap=MODELS[S.provider][0].id;S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;save("settings",S);render();};
   $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;save("settings",S);toast("Enregistré ✓");};
   $("#testKey").onclick=async()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;save("settings",S);if(!S.apiKey)return toast("Colle une clé.");const b=$("#testKey");b.disabled=true;b.innerHTML='<span class="spin"></span>';try{await callAI({system:"Réponds: OK.",messages:[{role:"user",text:"dis OK"}],modelId:S.cheap,label:"test"});toast("Clé OK ✓");}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent="🔌 Tester la clé";}};
-  $("#exportData").onclick=()=>{const dump={};["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>dump[k]=load(k));const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kalos-donnees.json";a.click();};
-  $("#importData").onclick=()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json,.json";inp.onchange=()=>{const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>{if(d[k]!==undefined)localStorage.setItem(K(k),JSON.stringify(d[k]));});toast("Import réussi ✓ rechargement...");setTimeout(()=>location.reload(),700);}catch(e){toast("Fichier invalide");}};rd.readAsText(f);};inp.click();};
-  $("#wipe").onclick=()=>{if(confirm("Tout effacer ? Irréversible.")){["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"].forEach(k=>localStorage.removeItem(K(k)));location.reload();}};
+  $("#exportData").onclick=()=>{const dump={};["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"].forEach(k=>dump[k]=load(k));const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kalos-donnees.json";a.click();};
+  $("#importData").onclick=()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json,.json";inp.onchange=()=>{const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"].forEach(k=>{if(d[k]!==undefined)localStorage.setItem(K(k),JSON.stringify(d[k]));});toast("Import réussi ✓ rechargement...");setTimeout(()=>location.reload(),700);}catch(e){toast("Fichier invalide");}};rd.readAsText(f);};inp.click();};
+  $("#wipe").onclick=()=>{if(confirm("Tout effacer ? Irréversible.")){["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"].forEach(k=>localStorage.removeItem(K(k)));location.reload();}};
   const _lb=$("#logoutBtn");if(_lb)_lb.onclick=doLogout;
 }
 
@@ -1316,10 +1411,10 @@ items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items ma
 /* ===================== COMPTES & SYNCHRO (Supabase) ===================== */
 const SB_URL="https://vwxwagotympjzoztjltv.supabase.co";
 const SB_KEY="sb_publishable_Ce5qJsMMujnEijotMu0zkw_YpeVDDKN";
-const ALLKEYS=["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat"];
+const ALLKEYS=["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"];
 let sb=null; try{ if(window.supabase) sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
 let currentUser=null, cloudTimer=null;
-function reloadState(){S=load("settings");profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");}
+function reloadState(){S=load("settings");profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");coachSt=load("coach");}
 function showAuth(msg){const o=$("#authOverlay");if(o){o.style.display="flex";if(msg!==undefined)$("#authMsg").textContent=msg;}}
 function hideAuth(){const o=$("#authOverlay");if(o)o.style.display="none";}
 function startApp(){hideAuth();buildNav();refreshLevel();render();}
