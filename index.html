@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v35";
+const APP_VERSION="v36";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -220,7 +220,7 @@ const MODELS={
 const DEFAULTS={
   settings:{provider:"google",apiKey:"",cheap:"gemini-2.5-flash-lite",power:"gemini-2.5-flash",eur:0.92,monthly:30},
   profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null},
-  nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null},
+  nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null,targets:null},
   planning:{data:null,updated:null},planlog:{},
   checkin:{date:"",mood:""},
   quests:{date:"",items:[]},progress:{xp:0,pillars:{sante:0,esprit:0,culture:0,art:0,travail:0,relations:0}},
@@ -547,6 +547,12 @@ function coachContext(){
   if(nutrition.allergies)nut.push("allergies : "+nutrition.allergies);
   if(nutrition.regime)nut.push("régime : "+nutrition.regime);
   if(nut.length||nutrition.advice)c+="\n\n=== SECTION NUTRITION (onglet Nutrition) ===\n"+nut.join(" · ")+(nutrition.advice?("\nConseils actuels (extrait) :\n"+nutrition.advice.slice(0,700)):"");
+  const tmm=mealsToday();
+  if(tmm.length||nutrition.targets){
+    const sm=mealsSum(tmm);
+    c+="\n\n=== REPAS D'AUJOURD'HUI (photos analysées, estimations) ===\n"+(tmm.length?tmm.map(m=>"- "+(m.plat||"repas")+" : ~"+(m.kcal||"?")+" kcal, "+(m.prot||"?")+" g prot").join("\n")+"\nTotal du jour : ~"+Math.round(sm.k)+" kcal ("+Math.round(sm.kmin)+"–"+Math.round(sm.kmax)+") · ~"+Math.round(sm.p)+" g prot · "+Math.round(sm.g)+" g gluc · "+Math.round(sm.l)+" g lip":"(aucun repas noté aujourd'hui)");
+    if(nutrition.targets)c+="\nOBJECTIFS QUOTIDIENS : "+nutrition.targets.kcal+" kcal · "+nutrition.targets.prot+" g prot · "+nutrition.targets.gluc+" g gluc · "+nutrition.targets.lip+" g lip → dis si c'est comblé et ce qui manque.";
+  }
   const ts=trackingSummary();
   if(ts)c+="\n\n=== SECTION SUIVI (mesures récentes) ===\n"+ts;
   if(quests.date===todayStr()&&quests.items.length)c+="\n\n=== QUÊTES DU JOUR ===\n"+quests.items.map(q=>(q.done?"[fait] ":"[à faire] ")+q.text).join("\n");
@@ -753,14 +759,43 @@ ${SCI}`;
 }
 
 let mealPending=null;
+function mealsToday(){return (nutrition.meals||[]).filter(m=>m.date===todayStr());}
+function mealsSum(tm){return tm.reduce((a,m)=>({k:a.k+(+m.kcal||0),kmin:a.kmin+(+m.kmin||+m.kcal||0),kmax:a.kmax+(+m.kmax||+m.kcal||0),p:a.p+(+m.prot||0),pmin:a.pmin+(+m.pmin||+m.prot||0),pmax:a.pmax+(+m.pmax||+m.prot||0),g:a.g+(+m.gluc||0),l:a.l+(+m.lip||0)}),{k:0,kmin:0,kmax:0,p:0,pmin:0,pmax:0,g:0,l:0});}
+function nutriBar(label,val,vmin,vmax,target,unit){
+  const t=+target||0;
+  const pct=t?Math.round(val/t*100):0;
+  const col=!t?"var(--grey)":(pct<80?"var(--accent)":(pct<=115?"var(--sante)":"var(--danger)"));
+  const range=(vmax>vmin&&Math.round(vmax-vmin)>0)?` <span style="font-size:11px">(${Math.round(vmin)}–${Math.round(vmax)})</span>`:"";
+  return `<div class="pbar"><div class="top"><span>${label}</span><span class="muted">~${Math.round(val)}${range} / ${t||"?"} ${unit}</span></div><div class="track"><i style="width:${Math.min(100,pct)}%;background:${col}"></i></div></div>`;
+}
+function nutriStatus(s,T){
+  if(!T)return "";
+  const pLeft=T.prot-s.p,kLeft=T.kcal-s.k,bits=[];
+  if(s.p>=T.prot*0.9&&s.k>=T.kcal*0.75&&s.k<=T.kcal*1.15)return "✓ Journée dans la cible (à la marge d'erreur près).";
+  if(pLeft>15)bits.push("encore ~"+Math.round(pLeft)+" g de protéines à prendre");
+  if(kLeft>150)bits.push("~"+Math.round(kLeft)+" kcal disponibles");
+  if(s.k>T.kcal*1.15)bits.push("kcal au-dessus de la cible (~+"+Math.round(s.k-T.kcal)+")");
+  if(s.p>=T.prot&&pLeft<=15&&!bits.length)bits.push("protéines OK");
+  return bits.length?("→ "+bits.join(" · ")+"."):"";
+}
 function renderMeals(){
   const ms=nutrition.meals||[];
+  const tm=mealsToday();
+  const T=nutrition.targets;
+  let head="";
+  if(tm.length){
+    const s=mealsSum(tm);
+    head=`<div style="background:var(--accent-l);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="font-weight:700;margin-bottom:8px">Aujourd'hui <span class="muted" style="font-weight:400;font-size:12px">(${tm.length} repas, estimations)</span></div>
+      ${T?nutriBar("Calories",s.k,s.kmin,s.kmax,T.kcal,"kcal")+nutriBar("Protéines",s.p,s.pmin,s.pmax,T.prot,"g")+nutriBar("Glucides",s.g,0,0,T.gluc,"g")+nutriBar("Lipides",s.l,0,0,T.lip,"g")
+        :`~${Math.round(s.k)} kcal · ~${Math.round(s.p)} g de protéines — <span class="muted">calcule tes 🎯 objectifs pour voir s'ils sont comblés.</span>`}
+      ${T?`<div style="font-size:13px;margin-top:6px;font-weight:600;color:var(--accent-d)">${nutriStatus(s,T)}</div>`:""}
+    </div>`;
+  }
   if(!ms.length)return '<span class="muted">Aucun repas analysé pour le moment.</span>';
-  const today=todayStr();const tm=ms.filter(m=>m.date===today);
-  const sum=tm.reduce((a,m)=>({k:a.k+(+m.kcal||0),p:a.p+(+m.prot||0)}),{k:0,p:0});
-  const head=tm.length?`<div style="background:var(--accent-l);border-radius:10px;padding:10px;margin-bottom:10px"><b>Aujourd'hui :</b> ~${Math.round(sum.k)} kcal · ~${Math.round(sum.p)} g de protéines <span class="muted">(${tm.length} repas)</span></div>`:"";
   return head+ms.slice(0,15).map((m,i)=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
-    <div style="display:flex;gap:10px;align-items:center">${m.thumb?`<img src="${m.thumb}" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none">`:""}<div style="flex:1"><div>${esc(m.plat||"Repas")}</div><span class="muted" style="font-size:12px">${esc(m.date||"")} · ~${esc(String(m.kcal??"?"))} kcal · ${esc(String(m.prot??"?"))} g prot.</span></div><button class="btn sm ghost" data-delmeal="${i}">✕</button></div>
+    <div style="display:flex;gap:10px;align-items:center">${m.thumb?`<img src="${m.thumb}" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none">`:""}<div style="flex:1"><div>${esc(m.plat||"Repas")}</div><span class="muted" style="font-size:12px">${esc(m.date||"")} · ~${esc(String(m.kcal??"?"))} kcal${(m.kmin&&m.kmax)?` (${esc(String(Math.round(m.kmin)))}–${esc(String(Math.round(m.kmax)))})`:""} · ${esc(String(m.prot??"?"))} g prot.${m.conf?` · fiabilité ${esc(m.conf)}`:""}</span></div><button class="btn sm ghost" data-delmeal="${i}">✕</button></div>
+    ${m.alims?`<div class="muted" style="font-size:12px">🧺 ${esc(m.alims)}</div>`:""}
     ${m.comment?`<div class="muted" style="font-size:12px">${esc(m.comment)}</div>`:""}
     <div class="muted" style="font-size:11px">Glucides ${esc(String(m.gluc??"?"))} g · Lipides ${esc(String(m.lip??"?"))} g</div>
   </div>`).join("");
@@ -771,20 +806,43 @@ async function analyseMeal(){
   const note=($("#mealNote").value||"").trim();
   const b=$("#analyseMeal");if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> Analyse...';}
   try{
-    const sys=`Tu es Kalos, coach nutrition. On te donne la PHOTO d'un repas (+ une note éventuelle). Estime au mieux les valeurs nutritionnelles de la portion visible. Les estimations sont APPROXIMATIVES.
-Réponds UNIQUEMENT par un JSON valide, sans texte autour : {"plat":"nom court du plat","kcal":nombre_entier,"proteines":nombre,"glucides":nombre,"lipides":nombre,"commentaire":"1 phrase utile pour une recomposition (perte de gras + maintien du muscle)"}. Valeurs en grammes sauf kcal.`;
+    const sys=`Tu es Kalos, expert en nutrition et en reconnaissance alimentaire sur photo. On te donne la PHOTO d'un repas (+ une note éventuelle).
+MÉTHODE, dans l'ordre :
+1. IDENTIFIE chaque aliment et boisson visible, précisément (ex. « escalope de poulet grillée », pas juste « viande »). Utilise les indices : type de plat, cuisson, sauce, accompagnements.
+2. ESTIME la portion de chacun en grammes, avec les repères visuels : assiette standard ~26 cm, couverts, verre, taille d'une main.
+3. CALCULE les apports de la portion visible, puis donne une FOURCHETTE min-max qui reflète l'incertitude réelle (huile de cuisson invisible, sauce, épaisseur cachée) : typiquement ±15-25 %.
+Si la note écrite précise des aliments ou des quantités, elle PRIME sur ce que tu crois voir.
+Réponds UNIQUEMENT par un JSON valide, sans texte autour :
+{"plat":"nom court du plat","aliments":[{"nom":"...","portion_g":nombre}],"kcal":nombre,"kcal_min":nombre,"kcal_max":nombre,"proteines":nombre,"prot_min":nombre,"prot_max":nombre,"glucides":nombre,"lipides":nombre,"confiance":"haute|moyenne|basse","commentaire":"1 phrase utile pour la recomposition corporelle (perte de gras + maintien du muscle)"}
+kcal, proteines, glucides, lipides = ta meilleure estimation (milieu de fourchette). Valeurs en grammes sauf kcal.`;
     const msg={role:"user",text:"Note du repas : "+(note||"(aucune)"),img:mealPending.b64};
-    const r=await callAI({system:sys,messages:[msg],modelId:S.cheap,label:"repas photo"});
+    const r=await callAI({system:sys,messages:[msg],modelId:S.power,label:"repas photo",maxTokens:1500});
     const d=extractJSONobj(r.text);
     if(!d)throw new Error("Réponse non exploitable, réessaie.");
     if(!nutrition.meals)nutrition.meals=[];
-    nutrition.meals.unshift({date:todayStr(),plat:d.plat||note||"Repas",kcal:d.kcal,prot:d.proteines,gluc:d.glucides,lip:d.lipides,comment:d.commentaire,thumb:mealPending.dataUrl});
+    const alims=Array.isArray(d.aliments)?d.aliments.map(a=>String(a.nom||"")+(a.portion_g?(" ~"+Math.round(+a.portion_g)+" g"):"")).filter(Boolean).join(", "):"";
+    nutrition.meals.unshift({date:todayStr(),plat:d.plat||note||"Repas",kcal:d.kcal,kmin:d.kcal_min,kmax:d.kcal_max,prot:d.proteines,pmin:d.prot_min,pmax:d.prot_max,gluc:d.glucides,lip:d.lipides,conf:d.confiance||"",alims,comment:d.commentaire,thumb:mealPending.dataUrl});
     nutrition.meals=nutrition.meals.slice(0,25);
     save("nutrition",nutrition);mealPending=null;toast("Repas analysé ✓");
   }catch(e){toast(e.message);}finally{render();}
 }
 function rNutrition(){
+  const T=nutrition.targets;
   $("#main").innerHTML=`${moiTabs("nutrition")}${keyBanner()}
+   <div class="card"><h2>🎯 Mes objectifs du jour</h2>
+     ${T?`<div class="stat">
+        <div class="box"><b>${esc(String(T.kcal))}</b><span>kcal</span></div>
+        <div class="box"><b>${esc(String(T.prot))} g</b><span>protéines</span></div>
+        <div class="box"><b>${esc(String(T.gluc))} g</b><span>glucides</span></div>
+        <div class="box"><b>${esc(String(T.lip))} g</b><span>lipides</span></div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="ghost sm" id="genTargets">🎯 Recalculer</button>
+        ${T.why?`<button class="ghost sm" id="whyTargets">ℹ️ Pourquoi ces chiffres</button>`:""}
+      </div>
+      ${T.why?`<div id="whyTargetsBox" class="muted" style="display:none;margin-top:8px;font-size:13px">${esc(T.why)}</div>`:""}`
+     :`<p class="muted" style="margin:-4px 0 10px">Kalos calcule tes cibles quotidiennes (kcal, protéines, glucides, lipides) selon ton profil et ton objectif. Ensuite, 2-3 photos de repas par jour suffisent pour savoir si c'est comblé.</p><button class="btn" id="genTargets">🎯 Calculer mes objectifs</button>`}
+   </div>
    <div class="card" style="border-left:4px solid var(--accent)"><h2>📷 Analyser un repas en photo</h2>
      <p class="muted" style="margin:-6px 0 8px">Prends ton assiette en photo (+ une note si tu veux). L'IA estime calories, protéines, glucides, lipides. <i>Ce sont des estimations approximatives.</i></p>
      <div id="mealPrevWrap"></div>
@@ -800,6 +858,22 @@ function rNutrition(){
   $("#mealPhoto").onclick=async()=>{const im=await pickImage(700);if(im){mealPending=im;$("#mealPrevWrap").innerHTML=`<div class="imgprev"><img src="${im.dataUrl}"><span>Photo prête</span><button class="ghost sm" id="rmMeal" style="margin-left:auto">✕</button></div>`;$("#rmMeal").onclick=()=>{mealPending=null;$("#mealPrevWrap").innerHTML="";};}};
   $("#analyseMeal").onclick=analyseMeal;
   $("#genNut").onclick=genNutrition;
+  const gt=$("#genTargets");if(gt)gt.onclick=genNutritionTargets;
+  const wt=$("#whyTargets");if(wt)wt.onclick=()=>{const x=$("#whyTargetsBox");if(x)x.style.display=x.style.display==="none"?"block":"none";};
+}
+async function genNutritionTargets(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  if(!profile.text)return toast("Crée d'abord ton profil (Coach).");
+  const b=$("#genTargets");if(b){b.disabled=true;b.innerHTML='<span class="spin"></span>';}
+  try{
+    const sys='Tu es Kalos, coach nutrition. À partir du PROFIL (poids, taille, âge, activité, objectif — souvent recomposition corporelle : perte de gras + maintien/gain de muscle) et du SUIVI récent, calcule des OBJECTIFS NUTRITIONNELS QUOTIDIENS réalistes et durables. Base-toi sur le consensus scientifique : protéines ~1,6-2,2 g/kg de poids pour la recomposition, déficit calorique modéré (10-20 %) si perte de gras visée, jamais de régime extrême. Réponds UNIQUEMENT par un JSON valide, sans texte autour : {"kcal":nombre,"proteines":nombre,"glucides":nombre,"lipides":nombre,"explication":"2 phrases max sur le pourquoi de ces chiffres"}';
+    const ctx="PROFIL:\n"+(profile.text||"(non renseigné)")+"\n\nSUIVI RÉCENT:\n"+(trackingSummary()||"-");
+    const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"objectifs nutrition",maxTokens:600});
+    const d=extractJSONobj(r.text);
+    if(!d||!d.kcal)throw new Error("Réponse non exploitable, réessaie.");
+    nutrition.targets={kcal:Math.round(+d.kcal),prot:Math.round(+d.proteines||0),gluc:Math.round(+d.glucides||0),lip:Math.round(+d.lipides||0),why:String(d.explication||""),updated:Date.now()};
+    save("nutrition",nutrition);toast("Objectifs calculés ✓");render();
+  }catch(e){toast(e.message);if(b){b.disabled=false;b.textContent="🎯 Calculer mes objectifs";}}
 }
 async function genNutrition(){
   if(!S.apiKey)return toast("Ajoute une clé API.");
