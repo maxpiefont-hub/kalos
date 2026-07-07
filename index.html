@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v37";
+const APP_VERSION="v38";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -1438,6 +1438,15 @@ function cloudSave(){if(!currentUser||!sb)return;clearTimeout(cloudTimer);cloudT
 function flushCloud(){if(currentUser&&sb&&localChg()>syncedChg())cloudSaveNow();}
 async function afterLogin(session){
   currentUser=session.user;
+  /* Isolation par compte : si cet appareil contient les données d'un AUTRE compte,
+     on repart proprement (ses données à lui sont déjà dans son cloud, poussées au logout). */
+  const owner=localStorage.getItem("kalos__owner");
+  if(owner&&owner!==currentUser.id){
+    ALLKEYS.forEach(k=>localStorage.removeItem(K(k)));
+    Object.keys(localStorage).filter(k=>k.indexOf("kalos_sw_")===0).forEach(k=>localStorage.removeItem(k));
+    localStorage.setItem("kalos__chg","0");localStorage.setItem("kalos__synced","0");
+  }
+  localStorage.setItem("kalos__owner",currentUser.id);
   const cloud=await cloudLoad();
   const lc=localChg();
   if(cloud&&Object.keys(cloud).length){
