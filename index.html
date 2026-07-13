@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v38";
+const APP_VERSION="v39";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -218,7 +218,7 @@ const MODELS={
   anthropic:[{id:"claude-haiku-4-5-20251001",name:"Claude Haiku 4.5 (coaching)",in:1.00,out:5.00},{id:"claude-sonnet-4-6",name:"Claude Sonnet 4.6 (puissant)",in:3.00,out:15.00}],
 };
 const DEFAULTS={
-  settings:{provider:"google",apiKey:"",cheap:"gemini-2.5-flash-lite",power:"gemini-2.5-flash",eur:0.92,monthly:30},
+  settings:{provider:"google",apiKey:"",cheap:"gemini-2.5-flash-lite",power:"gemini-2.5-flash",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30},
   profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null},
   nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null,targets:null},
   planning:{data:null,updated:null},planlog:{},
@@ -342,21 +342,22 @@ function pickImage(maxDim=1024){return new Promise((res)=>{const inp=document.cr
 function pickImages(maxDim=1024){return new Promise((res)=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;inp.onchange=async()=>{const fs=[...inp.files];if(!fs.length){res([]);return;}try{const out=[];for(const f of fs)out.push(await compressImage(f,maxDim));res(out);}catch(e){toast("Image illisible");res([]);}};inp.click();});}
 
 async function callAI({system,messages,modelId,label,maxTokens=3000}){
-  if(!S.apiKey)throw new Error("Aucune clé API. Va dans Réglages.");
   system=(nowContext()+"\n\n")+(system||"");
   const meta=modelMeta(modelId),prov=meta.provider;let url,opts,parse;
+  const useKey=(prov===S.provider)?S.apiKey:(S.boostKey||S.apiKey);
+  if(!useKey)throw new Error("Aucune clé API pour "+prov+". Va dans Réglages.");
   if(prov==="anthropic"){
     url="https://api.anthropic.com/v1/messages";
     const mm=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);return ims.length?{role:m.role,content:[{type:"text",text:m.text||""},...ims.map(b=>({type:"image",source:{type:"base64",media_type:"image/jpeg",data:b}}))]}:{role:m.role,content:m.text};});
-    opts={method:"POST",headers:{"content-type":"application/json","x-api-key":S.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:modelId,max_tokens:maxTokens,system,messages:mm})};
+    opts={method:"POST",headers:{"content-type":"application/json","x-api-key":useKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:modelId,max_tokens:maxTokens,system,messages:mm})};
     parse=(d)=>({text:(d.content||[]).map(c=>c.text).join("\n"),inTok:d.usage?.input_tokens||0,outTok:d.usage?.output_tokens||0});
   }else if(prov==="openai"){
     url="https://api.openai.com/v1/chat/completions";
     const mm=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);return ims.length?{role:m.role,content:[{type:"text",text:m.text||""},...ims.map(b=>({type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b}}))]}:{role:m.role,content:m.text};});
-    opts={method:"POST",headers:{"content-type":"application/json","Authorization":"Bearer "+S.apiKey},body:JSON.stringify({model:modelId,messages:[{role:"system",content:system},...mm],max_completion_tokens:maxTokens})};
+    opts={method:"POST",headers:{"content-type":"application/json","Authorization":"Bearer "+useKey},body:JSON.stringify({model:modelId,messages:[{role:"system",content:system},...mm],max_completion_tokens:maxTokens})};
     parse=(d)=>({text:d.choices?.[0]?.message?.content||"",inTok:d.usage?.prompt_tokens||0,outTok:d.usage?.completion_tokens||0});
   }else{
-    url="https://generativelanguage.googleapis.com/v1beta/models/"+modelId+":generateContent?key="+encodeURIComponent(S.apiKey);
+    url="https://generativelanguage.googleapis.com/v1beta/models/"+modelId+":generateContent?key="+encodeURIComponent(useKey);
     const contents=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);const parts=[{text:m.text||""}];ims.forEach(b=>parts.push({inline_data:{mime_type:"image/jpeg",data:b}}));return{role:m.role==="assistant"?"model":"user",parts};});
     opts={method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:maxTokens}})};
     parse=(d)=>({text:(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("\n"),inTok:d.usageMetadata?.promptTokenCount||0,outTok:d.usageMetadata?.candidatesTokenCount||0});
@@ -519,9 +520,9 @@ RÈGLES ABSOLUES :
 - Si une FICHE PROFIL existe déjà : AUCUN entretien. Salue en une phrase et apporte directement de la valeur (proposition concrète adaptée à l'heure et au planning du jour).
 - Si la personne demande quelque chose de concret (programme, planning de la semaine ou de la semaine prochaine, conseil), tu le FAIS immédiatement au lieu de poser des questions.
 - ACCÈS TOTAL : tu REÇOIS plus bas les données de TOUTES les sections de l'app (profil, programme de vie, salle, nutrition, suivi, quêtes, planning du jour). Ne dis JAMAIS que tu n'as pas accès à une section : lis les données fournies et sers-t'en.
-Termine TOUJOURS ton message par une ligne, au format EXACT :
+Quand des choix rapides aident VRAIMENT, tu PEUX terminer par une ligne au format EXACT :
 OPTIONS: réponse courte 1 | réponse courte 2 | réponse courte 3
-en proposant 2 à 4 réponses rapides que la personne peut choisir d'un simple tap (elle peut aussi répondre librement).
+(2 à 4 réponses tapables). Ne mets PAS d'OPTIONS si ça n'apporte rien : une réponse nette vaut mieux qu'une question de plus.
 Quand tu en sais assez, dis-le en une phrase et propose OPTIONS: Générer mon profil | Continuer.
 MODIFIER LES SECTIONS : quand la personne demande un changement concret, confirme en une phrase PUIS ajoute tout à la fin UNE ligne au format EXACT « ACTION: TYPE | description claire et complète de la demande », avec TYPE parmi :
 - PLANNING (planning de la semaine : déplacer, ajouter, réduire, « fais ma semaine », « pas le temps mardi »...)
@@ -530,7 +531,7 @@ MODIFIER LES SECTIONS : quand la personne demande un changement concret, confirm
 - NUTRITION (conseils repas, courses, régime)
 - QUETES (quêtes du jour)
 Une seule ligne ACTION par message, et UNIQUEMENT pour une vraie demande de modification (jamais pour une simple question).
-L'app demande CONFIRMATION à la personne avant d'appliquer une ACTION : formule ta phrase comme une proposition (« je te prépare ça ? »), jamais comme un fait accompli.
+L'app APPLIQUE l'ACTION automatiquement (la personne peut annuler d'un tap). Donc AGIS tout de suite : émets la ligne ACTION dès qu'on te demande un changement, sans reposer de question, et annonce en une phrase ce que tu fais (« ok, je décale ta salle à 9 h »).
 Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.`;
 const SCI="IMPORTANT — Fonde-toi uniquement sur des principes scientifiques établis et vérifiables (sciences du sport, nutrition, médecine) : par exemple régime méditerranéen, apport protéique suffisant pour la recomposition corporelle, recommandations OMS d'activité physique, 7 à 9 h de sommeil par nuit. N'invente jamais d'études, de chiffres ni de certitudes ; reste sur le consensus solide. En cas de doute, dis-le clairement. Pour l'asthme, le dos et les genoux, rappelle de valider avec un professionnel de santé (médecin, kiné).";
 /* Contexte complet injecté au Coach : il voit toutes les sections de l'app */
@@ -565,8 +566,12 @@ let pendingImgs=[];
 /* — ACTION du coach en attente de confirmation (carte inline dans le chat) — */
 let pendingAction=null;
 const ACT_LBL={PLANNING:"📅 Planning",SALLE:"🏋️ Salle",PROGRAMME:"🌿 Programme de vie",NUTRITION:"🥗 Nutrition",QUETES:"⚔️ Quêtes"};
+let coachUndo=null; /* dernier changement du coach, annulable */
+function undoCoach(){if(!coachUndo)return;try{localStorage.setItem(K(coachUndo.key),JSON.stringify(coachUndo.prev));localStorage.setItem("kalos__chg",String(Date.now()));reloadState();}catch(e){}coachUndo=null;toast("Changement annulé ✓");render();}
 async function runCoachAction(act){
   let note="";
+  const _uk={PLANNING:"planning",SALLE:"salle",PROGRAMME:"program",NUTRITION:"nutrition",QUETES:"quests"}[act.type];
+  if(_uk){try{coachUndo={key:_uk,prev:JSON.parse(JSON.stringify(load(_uk)))};}catch(e){coachUndo=null;}}
   if(act.type==="PLANNING"){
     if(!planning.data){toast("Génère d'abord un planning (onglet Planning).");return "";}
     const n=await applyPlanningChange(act.req);note="✓ Planning mis à jour. "+(n||"");
@@ -587,6 +592,7 @@ function rDecouverte(){
        <button class="btn" id="coachPlan" style="width:100%">✨ Créer / mettre à jour mon plan</button>
        <p class="muted" id="coachPlanStatus" style="text-align:center;margin:8px 0 0;font-size:13px"></p></div>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+       <button class="ghost sm" id="boostToggle">🧠 Approfondi : off</button>
        <button class="ghost sm" id="reviewBtn">📊 Bilan de la semaine</button>
        <button class="ghost sm" id="startBtn">▶︎ Relancer la discussion</button>
        <button class="ghost sm" id="genProfileBtn">🪪 Mettre à jour le profil</button>
@@ -594,6 +600,7 @@ function rDecouverte(){
        <button class="ghost sm" id="clearChat">🗑 Effacer</button></div></div>`;
   drawChat();drawPrev();
   $("#startBtn").onclick=startDiscovery;$("#sendBtn").onclick=sendDiscovery;$("#genProfileBtn").onclick=genProfile;$("#coachPlan").onclick=coachCreerPlan;$("#reviewBtn").onclick=()=>weeklyReview(false);
+  const _bt=$("#boostToggle");if(_bt){_bt.textContent="🧠 Approfondi : "+(boostNext?"on":"off");_bt.onclick=()=>{boostNext=!boostNext;_bt.textContent="🧠 Approfondi : "+(boostNext?"on":"off");if(boostNext&&!boostAvailable())toast("Boost indispo : ajoute une clé Claude (Réglages) ou plafond atteint.");};}
   $("#toForm").onclick=()=>navTo("demarrage");
   $("#photoBtn").onclick=async()=>{const ims=await pickImages();if(ims.length){pendingImgs=pendingImgs.concat(ims);drawPrev();}};
   $("#clearChat").onclick=async()=>{if(confirm("Effacer la conversation ?")){await maybeSummarizeChat(true);pendingAction=null;chat=[];save("chat",chat);coachSt.memUpto=0;save("coach",coachSt);drawChat();}};
@@ -605,16 +612,10 @@ function drawPrev(){const w=$("#prevWrap");if(!w)return;if(!pendingImgs.length){
 function parseOptions(t){t=t||"";const m=t.match(/OPTIONS:\s*(.+)\s*$/im);const options=m?m[1].split("|").map(s=>s.trim()).filter(Boolean).slice(0,4):[];const clean=t.replace(/\n?\s*OPTIONS:.*$/im,"").replace(/\n?\s*ACTION:.*$/im,"").trim();return{clean,options};}
 function parseAction(t){const m=(t||"").match(/ACTION:\s*(PLANNING|SALLE|PROGRAMME|NUTRITION|QUETES)\s*\|\s*(.+?)\s*$/im);return m?{type:m[1].toUpperCase(),req:m[2].trim()}:null;}
 function drawChat(){const box=$("#chat");if(!box)return;let html=chat.length?chat.map(m=>{const txt=m.role==="assistant"?parseOptions(m.text).clean:m.text;return `<div class="msg ${m.role==="assistant"?"ai":"me"}">${m.photo?("📷"+(m.nph>1?"×"+m.nph:"")+" "):""}${esc(txt)}</div>`;}).join(""):`<div class="muted" style="padding:8px">Clique « Démarrer » pour commencer.</div>`;
-  if(pendingAction){const lbl=ACT_LBL[pendingAction.type]||pendingAction.type;
-    html+=`<div class="msg ai" style="border:1.5px solid var(--accent);max-width:92%"><b>${lbl} — modification proposée</b>\n${esc(pendingAction.req)}\n<div style="display:flex;gap:8px;margin-top:9px"><button class="btn sm" id="actGo">✓ Appliquer</button><button class="ghost sm" id="actNo">Ignorer</button></div></div>`;}
+  if(coachUndo){
+    html+=`<div class="msg ai" style="border:1px dashed var(--accent);max-width:92%">↩︎ dernier changement appliqué. <button class="ghost sm" id="undoAct" style="margin-left:6px">Annuler</button></div>`;}
   box.innerHTML=html;box.scrollTop=box.scrollHeight;
-  if(pendingAction){
-    const go=$("#actGo"),no=$("#actNo");
-    if(go)go.onclick=async()=>{go.disabled=true;if(no)no.disabled=true;go.innerHTML='<span class="spin"></span>';const act=pendingAction;
-      try{const note=await runCoachAction(act);pendingAction=null;if(note){chat.push({role:"assistant",text:note});save("chat",chat);toast("Mis à jour ✓");}drawChat();}
-      catch(e){go.disabled=false;if(no)no.disabled=false;go.textContent="✓ Appliquer";toast(e.message);}};
-    if(no)no.onclick=()=>{pendingAction=null;drawChat();};
-  }
+  if(coachUndo){const u=$("#undoAct");if(u)u.onclick=()=>undoCoach();}
   renderQuick();}
 function renderQuick(){const q=$("#quickReplies");if(!q)return;const last=chat[chat.length-1];if(!last||last.role!=="assistant"){q.innerHTML="";return;}const o=parseOptions(last.text).options;q.innerHTML=o.map(x=>`<button class="ghost sm" data-quick="${esc(x).replace(/"/g,'&#34;')}">${esc(x)}</button>`).join("");q.querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>{const v=b.getAttribute("data-quick");if(/profil/i.test(v)){genProfile();return;}const inp=$("#chatIn");if(inp){inp.value=v;sendDiscovery();}});}
 async function startDiscovery(){if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");await maybeSummarizeChat(true);pendingAction=null;chat=[];save("chat",chat);coachSt.memUpto=0;save("coach",coachSt);drawChat();await aiTurn(true);}
@@ -630,8 +631,9 @@ async function aiTurn(first,imgs){
     const r=await callAI({system:DISCOVERY_SYSTEM+pctx+coachContext(),messages:msgs,modelId:mid,label:"découverte"});
     chat.push({role:"assistant",text:r.text});save("chat",chat);
     maybeLearnProfile();maybeSummarizeChat();
+    boostNext=false;
     const act=parseAction(r.text);
-    if(act)pendingAction=act;
+    if(act){try{const note=await runCoachAction(act);if(note){chat.push({role:"assistant",text:note});save("chat",chat);toast("Fait ✓ (annulable)");}}catch(e){chat.push({role:"assistant",text:"Je n'ai pas réussi à appliquer : "+e.message});save("chat",chat);}}
     drawChat();
   }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="Envoyer";}}
 }
@@ -660,12 +662,17 @@ async function maybeLearnProfile(){
     profile.learnedUpto=chat.length;save("profile",profile);
   }catch(e){}finally{_learnBusy=false;}
 }
-/* — Routage auto du modèle : léger pour le bavardage, puissant pour l'analyse — */
+/* — Routage auto du modèle : Gemini par défaut, Claude en boost cadré — */
+let boostNext=false; /* forcé par le bouton « Réflexion approfondie » */
+function aiProjMonthlyEur(){const tot=costs.reduce((a,c)=>a+(c.usd||0),0);const d={};costs.forEach(c=>d[new Date(c.ts).toISOString().slice(0,10)]=1);const dc=Object.keys(d).length||1;return tot/dc*30*(S.eur||0.92);}
+function boostAvailable(){if(!S.boostOn||!S.boost)return false;const bp=modelMeta(S.boost).provider;const hasKey=(bp===S.provider)?!!S.apiKey:!!S.boostKey;if(!hasKey)return false;if(S.aiCap&&aiProjMonthlyEur()>=S.aiCap)return false;return true;}
 function pickChatModel(txt,hasImgs){
-  if(hasImgs)return S.power;
   const t=(txt||"").toLowerCase();
+  const wantsDeep=boostNext||/(analyse (approfondie|en profondeur)|réflexion approfondie|bilan complet|stratégie complète|approfondis)/.test(t);
+  if(wantsDeep&&boostAvailable())return S.boost;
+  if(hasImgs)return S.power;
   if(t.length>240)return S.power;
-  if(/(explique|analyse|détaille|compare|pourquoi|conseille|stratégie|bilan|approfondi|en profondeur|justifie)/.test(t))return S.power;
+  if(/(modifie|change|adapte|déplace|refais|reprogramme|planning|programme|séance|explique|analyse|détaille|compare|pourquoi|conseille|bilan|justifie)/.test(t))return S.power;
   return S.cheap;
 }
 /* — Mémoire longue durée : résumés datés des conversations, injectés dans coachContext — */
@@ -1309,12 +1316,14 @@ function rReglages(){
      <div class="row"><div><label>Fournisseur</label><select id="provSel"><option value="google" ${S.provider==="google"?"selected":""}>Google (Gemini)</option><option value="openai" ${S.provider==="openai"?"selected":""}>OpenAI (GPT)</option><option value="anthropic" ${S.provider==="anthropic"?"selected":""}>Anthropic (Claude)</option></select></div>
      <div><label>Clé API (locale)</label><input id="keyIn" type="password" value="${esc(S.apiKey)}" placeholder="colle ta clé"></div></div>
      <div class="row"><div><label>Modèle « éco » (quotidien)</label><select id="cheapSel">${opts(S.cheap)}</select></div><div><label>Modèle « puissant » (programme/analyse)</label><select id="powerSel">${opts(S.power)}</select></div></div>
+     <div class="row"><div><label>Clé « boost » Claude (optionnelle)</label><input id="boostKeyIn" type="password" value="${esc(S.boostKey||"")}" placeholder="sk-ant-… pour la réflexion approfondie"></div><div style="max-width:220px"><label>Plafond IA (€/mois)</label><input id="aiCapIn" type="number" step="1" value="${S.aiCap||8}"></div></div>
+     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;color:var(--ink)"><input type="checkbox" id="boostOnChk" ${S.boostOn?"checked":""} style="width:18px;height:18px"> Activer le boost Claude (réflexion approfondie, coupé si le plafond mensuel est atteint)</label>
      <div class="row"><div style="max-width:220px"><label>Versement mensuel coffre (€)</label><input id="monthIn" type="number" value="${S.monthly}"></div><div style="max-width:220px"><label>Taux $→€</label><input id="eurIn" type="number" step="0.01" value="${S.eur}"></div></div>
      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="saveSet">💾 Enregistrer</button><button class="ghost" id="testKey">🔌 Tester la clé</button></div></div>
    <div class="card"><h2>Obtenir une clé</h2><p class="muted">Gemini : <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> · OpenAI : <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a> · Claude : <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></p><p class="muted">Astuce coût : « éco » sur Gemini Flash-Lite pour le quotidien, « puissant » réservé au programme et à l'analyse.</p></div>
    <div class="card"><h2>Données — transférer entre appareils</h2><p class="muted" style="margin:-6px 0 10px">Exporte depuis un appareil (ex. ton téléphone), puis importe le fichier sur l'autre (ex. ton PC) pour retrouver tout ton contenu.</p><button class="ghost sm" id="exportData">⬇︎ Exporter (JSON)</button> <button class="ghost sm" id="importData">⬆︎ Importer (JSON)</button> <button class="ghost sm" data-nav="couts">💸 Coûts IA</button> <button class="ghost sm" id="logoutBtn">🚪 Se déconnecter</button> <button class="ghost sm" id="wipe" style="color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button></div>`;
   $("#provSel").onchange=e=>{S.provider=e.target.value;S.cheap=MODELS[S.provider][0].id;S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;save("settings",S);render();};
-  $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;save("settings",S);toast("Enregistré ✓");};
+  $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;const _bk=$("#boostKeyIn");if(_bk)S.boostKey=_bk.value.trim();const _ac=$("#aiCapIn");if(_ac)S.aiCap=+_ac.value||0;const _bo=$("#boostOnChk");if(_bo)S.boostOn=_bo.checked;save("settings",S);toast("Enregistré ✓");};
   $("#testKey").onclick=async()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;save("settings",S);if(!S.apiKey)return toast("Colle une clé.");const b=$("#testKey");b.disabled=true;b.innerHTML='<span class="spin"></span>';try{await callAI({system:"Réponds: OK.",messages:[{role:"user",text:"dis OK"}],modelId:S.cheap,label:"test"});toast("Clé OK ✓");}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent="🔌 Tester la clé";}};
   $("#exportData").onclick=()=>{const dump={};["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"].forEach(k=>dump[k]=load(k));const blob=new Blob([JSON.stringify(dump,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="kalos-donnees.json";a.click();};
   $("#importData").onclick=()=>{const inp=document.createElement("input");inp.type="file";inp.accept="application/json,.json";inp.onchange=()=>{const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const d=JSON.parse(rd.result);["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"].forEach(k=>{if(d[k]!==undefined)localStorage.setItem(K(k),JSON.stringify(d[k]));});toast("Import réussi ✓ rechargement...");setTimeout(()=>location.reload(),700);}catch(e){toast("Fichier invalide");}};rd.readAsText(f);};inp.click();};
