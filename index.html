@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v46";
+const APP_VERSION="v47";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -375,10 +375,10 @@ async function callAI({system,messages,modelId,label,maxTokens=3000,_fallback}){
   save("costs",costs);return out;
 }
 
-const NAV_MAIN=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"moi",ic:"🪪",label:"Moi"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
-const NAV_GROUP={moi:["profil","programme","salle","nutrition","progression","quetes","coffre"],reglages:["reglages","couts"],decouverte:["decouverte","demarrage"]};
+const NAV_MAIN=[{id:"accueil",ic:"🏠",label:"Aujourd'hui"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"moi",ic:"🪪",label:"Moi"},{id:"progression",ic:"📈",label:"Progrès"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
+const NAV_GROUP={moi:["profil","programme","salle","nutrition"],progression:["progression","quetes","coffre","suivi"],reglages:["reglages","couts"],decouverte:["decouverte","demarrage"]};
 let current="accueil";
-const CORE=[{id:"accueil",ic:"🏠",label:"Accueil"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"suivi",ic:"📏",label:"Suivi"},{id:"moi",ic:"🪪",label:"Moi"}];
+const CORE=[{id:"accueil",ic:"🏠",label:"Aujourd'hui"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"progression",ic:"📈",label:"Progrès"},{id:"moi",ic:"🪪",label:"Moi"}];
 function navParent(id){for(const k in NAV_GROUP)if(NAV_GROUP[k].includes(id))return k;return id;}
 function navTo(id){if(id==="moi")id="profil";if(id==="calendrier")planDay=0;current=id;buildNav();render();window.scrollTo(0,0);}
 function buildNav(){
@@ -387,7 +387,11 @@ function buildNav(){
   const bn=$("#bnav");if(bn){bn.innerHTML="";CORE.forEach(c=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${c.ic}</span><span>${c.label}</span>`;const act=(c.id===par)||(c.id==="moi"&&!CORE.some(x=>x.id===par)&&par!=="accueil");b.className=act?"active":"";b.onclick=()=>navTo(c.id);bn.appendChild(b);});}
 }
 function moiTabs(active){
-  const T=[["profil","🪪","Profil"],["programme","📋","Programme"],["salle","🏋️","Salle"],["nutrition","🍽️","Nutrition"],["progression","📈","Progrès"]];
+  const T=[["profil","🪪","Profil"],["programme","📋","Programme"],["salle","🏋️","Salle"],["nutrition","🍽️","Nutrition"]];
+  return `<div class="moitabs">${T.map(t=>`<button class="mt ${t[0]===active?"on":""}" data-nav="${t[0]}">${t[1]} ${t[2]}</button>`).join("")}<button class="mt gear" data-nav="reglages" title="Réglages">⚙️</button></div>`;
+}
+function progresTabs(active){
+  const T=[["progression","📈","Progrès"],["quetes","⚔️","Quêtes"],["suivi","📏","Suivi"]];
   return `<div class="moitabs">${T.map(t=>`<button class="mt ${t[0]===active?"on":""}" data-nav="${t[0]}">${t[1]} ${t[2]}</button>`).join("")}<button class="mt gear" data-nav="reglages" title="Réglages">⚙️</button></div>`;
 }
 function render(){({accueil:rAccueil,demarrage:rOnboarding,decouverte:rDecouverte,profil:rProfil,salle:rSalle,nutrition:rNutrition,programme:rProgramme,calendrier:rCalendrier,quetes:rQuetes,progression:rProgression,coffre:rProgression,suivi:rSuivi,couts:rCouts,reglages:rReglages,moi:rProfil}[current])();}
@@ -422,11 +426,7 @@ function rAccueil(){
        </div><span style="font-size:18px;opacity:.85">→</span>
      </div>
    </div>
-   <div class="card"><div style="font-size:11.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--grey);font-weight:600">Prochaine étape</div><div style="font-size:19px;font-weight:800;margin:6px 0 13px;line-height:1.25;color:var(--accent-d)">${esc(next.t)}</div><button class="btn hub-cta" data-nav="${next.go}">Continuer →</button></div>
-   <div class="statline">
-     <div class="b ${lastT.poids?"":"empty"}" data-nav="suivi">${lastT.poids?`<b>${esc(lastT.poids)} kg</b><span>poids</span>`:`<b>+ Poids</b><span>1ʳᵉ mesure</span>`}</div>
-     <div class="b ${lastT.taille?"":"empty"}" data-nav="suivi">${lastT.taille?`<b>${esc(lastT.taille)} cm</b><span>taille</span>`:`<b>+ Taille</b><span>1ʳᵉ mesure</span>`}</div>
-   </div>
+   <div class="card" style="background:linear-gradient(135deg,var(--accent),var(--accent-d));border:0;color:#fff;box-shadow:0 8px 22px rgba(14,95,174,.25)"><div style="font-size:11.5px;letter-spacing:.7px;text-transform:uppercase;opacity:.85;font-weight:600">Ta prochaine action</div><div style="font-size:22px;font-weight:800;margin:7px 0 14px;line-height:1.2">${esc(next.t)}</div><button class="btn hub-cta" data-nav="${next.go}" style="background:#fff;color:var(--accent-d)">Continuer →</button></div>
    <div class="card"><h2 style="display:flex;align-items:baseline;gap:8px">Aujourd'hui · ${todayName} <span class="muted" id="nowClock" style="font-size:13px;font-weight:400;margin-left:auto">${nowHM()}</span></h2>
      <div style="display:flex;gap:8px;margin-bottom:12px">
        <button class="ghost sm moodb ${ci==="bof"?"active":""}" data-mood="bof" style="flex:1">😔 Bof</button>
@@ -438,19 +438,9 @@ function rAccueil(){
      <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><div style="font-size:13px;font-weight:600;color:var(--accent-d);margin-bottom:6px">⚔️ Quêtes du jour</div><div id="qList">${renderQuests()}</div></div>
      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Planning</button></div>
    </div>
-   ${renderWeatherCompact()}
-   <div class="card soft"><div class="shortcuts">
-     <button data-nav="decouverte"><span class="ic">🧭</span>Coach</button>
-     <button data-nav="profil"><span class="ic">🪪</span>Profil</button>
-     <button data-nav="salle"><span class="ic">🏋️</span>Salle</button>
-     <button data-nav="nutrition"><span class="ic">🍽️</span>Nutrition</button>
-     <button data-nav="programme"><span class="ic">📋</span>Programme</button>
-     <button data-nav="calendrier"><span class="ic">📅</span>Planning</button>
-     <button data-nav="quetes"><span class="ic">⚔️</span>Quêtes</button>
-     <button data-nav="progression"><span class="ic">📈</span>Progrès</button>
-     <button data-nav="couts"><span class="ic">💸</span>Coûts</button>
-   </div>
-   <button class="ghost sm" id="howBtn" style="margin-top:12px">ℹ️ Pourquoi Kalos marche</button>
+   ${(function(){const t=(todayPlan||[]).map(it=>String(it.titre||"")).join(" ").toLowerCase();return /(nage|mer |mer,|marche|rando|dehors|vélo|velo|course|courir|plein air|piscine|balade|extérieur|exterieur)/.test(t)?renderWeatherCompact():"";})()}
+   <div class="card soft">
+   <button class="ghost sm" id="howBtn">ℹ️ Pourquoi Kalos marche</button>
    <div id="howBox" class="formatted" style="display:none;margin-top:10px;font-size:13.5px">
        <b>1. Une seule étape à la fois.</b> On s'engage mieux quand l'action suivante est claire et petite — l'effet des « petites victoires » sur la motivation (Amabile & Kramer, 2011).<br><br>
        <b>2. Quand & où, pas seulement quoi.</b> Décider de l'heure et du lieu d'une action augmente fortement la probabilité de la faire (« intentions d'implémentation », Gollwitzer, 1999) — c'est tout le rôle du Planning.<br><br>
@@ -1090,7 +1080,7 @@ ${SCI}`;
 
 function rQuetes(){
   const fresh=quests.date===todayStr();
-  $("#main").innerHTML=`<button class="ghost sm" data-nav="progression" style="margin-bottom:10px">← Progrès</button><h1 class="page">⚔️ Quêtes du jour</h1><p class="sub">Chaque quête validée rapporte de l'XP.</p>${keyBanner()}
+  $("#main").innerHTML=`${progresTabs("quetes")}<h1 class="page">⚔️ Quêtes du jour</h1><p class="sub">Chaque quête validée rapporte de l'XP.</p>${keyBanner()}
    <div class="card"><button class="btn" id="genQ">🎲 ${fresh?"Régénérer":"Générer"} les quêtes</button><span class="muted" style="margin-left:10px">${quests.date?("Quêtes du "+quests.date):""}</span>
      <div id="qList" style="margin-top:16px">${renderQuests()}</div></div>`;
   $("#genQ").onclick=genQuests;bindQuests();
@@ -1120,7 +1110,7 @@ function rProgression(){
   if(coffre.lastMonth!==monthStr()){coffre.balance+=S.monthly;coffre.lastMonth=monthStr();save("coffre",coffre);}
   const{lvl,into,need}=levelInfo();const max=Math.max(100,...Object.values(progress.pillars));
   const todayQ=quests.date===todayStr()?quests.items:[];const doneQ=todayQ.filter(q=>q.done).length;
-  $("#main").innerHTML=`${moiTabs("progression")}
+  $("#main").innerHTML=`${progresTabs("progression")}
    <div class="card"><div class="stat"><div class="box"><b>${lvl}</b><span>Niveau</span></div><div class="box"><b>${progress.xp}</b><span>XP total</span></div><div class="box"><b>${into}/${need}</b><span>vers niveau ${lvl+1}</span></div></div>
    <button class="ghost sm" data-nav="quetes" style="margin-top:12px">⚔️ Quêtes du jour ${todayQ.length?`(${doneQ}/${todayQ.length})`:""}</button></div>
    <div class="card"><h2>Les 6 piliers</h2>${Object.keys(PILLARS).map(k=>{const v=progress.pillars[k],p=PILLARS[k];return `<div class="pbar"><div class="top"><span>${p.label}</span><span class="muted">${v} XP</span></div><div class="track"><i style="width:${Math.round(v/max*100)}%;background:${p.color}"></i></div></div>`;}).join("")}</div>
@@ -1189,7 +1179,7 @@ function svgChart(m){
 }
 function drawChart(){const box=$("#chartBox");if(!box)return;const m=METRICS.find(x=>x.k===chartMetric)||METRICS[0];box.innerHTML=svgChart(m);const cc=$("#chartChips");if(cc)cc.querySelectorAll("[data-m]").forEach(b=>b.style.cssText=chartChipStyle(b.dataset.m===chartMetric));}
 function rSuivi(){
-  $("#main").innerHTML=`${sleepBanner()}<h1 class="page">📏 Suivi</h1>
+  $("#main").innerHTML=`${sleepBanner()}${progresTabs("suivi")}<h1 class="page">📏 Suivi</h1>
    <div class="card"><h2>Nouvelle mesure</h2>
      <div class="row"><div><label>Date</label><input id="tDate" type="date" value="${todayStr()}"></div><div><label>Poids (kg)</label><input id="tPoids" type="number" step="0.1" inputmode="decimal"></div></div>
      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:13px">
