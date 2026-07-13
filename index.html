@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v44";
+const APP_VERSION="v45";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -362,8 +362,13 @@ async function callAI({system,messages,modelId,label,maxTokens=3000}){
     opts={method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:maxTokens}})};
     parse=(d)=>({text:(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("\n"),inTok:d.usageMetadata?.promptTokenCount||0,outTok:d.usageMetadata?.candidatesTokenCount||0});
   }
-  const res=await fetch(url,opts);const data=await res.json();
-  if(!res.ok)throw new Error("Erreur API ("+res.status+") : "+(data.error?.message||JSON.stringify(data).slice(0,180)));
+  let res,data,att=0;
+  while(true){
+    res=await fetch(url,opts);data=await res.json();
+    if(res.ok)break;
+    if((res.status===503||res.status===429||res.status===500)&&att<2){att++;await new Promise(r=>setTimeout(r,1200*att));continue;}
+    throw new Error("Erreur API ("+res.status+") : "+(data.error?.message||JSON.stringify(data).slice(0,180)));
+  }
   const out=parse(data);
   costs.push({ts:Date.now(),label:label||"chat",provider:prov,model:modelId,inTok:out.inTok,outTok:out.outTok,usd:out.inTok/1e6*meta.in+out.outTok/1e6*meta.out});
   save("costs",costs);return out;
@@ -832,12 +837,11 @@ function rSalle(){
    <div class="card"><label>Ton programme (séances, exercices, séries/répétitions, charges...)</label>
      <textarea id="salleIn" placeholder="ex. Lundi pecs/triceps : développé couché 4x8 à 40kg...">${esc(salle.input)}</textarea>
      <div id="sallePrevWrap" style="margin-top:8px"></div>
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="structSalle">🏋️ Créer mes séances</button><button class="ghost" id="analyseSalle">💬 Conseils</button></div></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="structSalle">🏋️ Créer mes séances</button></div></div>
    <div class="card"><h2>Mes séances <span class="muted" style="font-size:13px;font-weight:400">· coche + note ta charge, tu vois ta progression</span></h2><div id="seancesWrap">${renderSeances()}</div></div>
    ${salle.analysis?`<div class="card soft" style="padding:0;overflow:hidden"><button id="advToggle" style="background:none;border:0;width:100%;text-align:left;font:inherit;font-weight:600;color:var(--ink);padding:14px 16px;cursor:pointer">💬 Conseils détaillés ▾</button><div id="advBox" class="formatted" style="display:none;padding:0 16px 14px">${fmt(salle.analysis)}</div></div>`:""}`;
   $("#sallePhoto").onclick=async()=>{const ims=await pickImages(1280);if(ims.length){sallePending=sallePending.concat(ims);$("#sallePrevWrap").innerHTML=`<div class="imgprev">${sallePending.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${sallePending.length} photo(s) jointe(s)</span><button class="ghost sm" id="rmS" style="margin-left:auto">✕</button></div>`;$("#rmS").onclick=()=>{sallePending=[];$("#sallePrevWrap").innerHTML="";};}};
   $("#structSalle").onclick=structurerSeances;
-  $("#analyseSalle").onclick=analyseSalle;
   const at=$("#advToggle");if(at)at.onclick=()=>{const bx=$("#advBox");if(bx)bx.style.display=bx.style.display==="none"?"block":"none";};
   bindSeances();
 }
