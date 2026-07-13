@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v41";
+const APP_VERSION="v42";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -567,14 +567,15 @@ let pendingImgs=[];
 let pendingAction=null;
 const ACT_LBL={PLANNING:"📅 Planning",SALLE:"🏋️ Salle",PROGRAMME:"🌿 Programme de vie",NUTRITION:"🥗 Nutrition",QUETES:"⚔️ Quêtes"};
 let coachUndo=null; /* dernier changement du coach, annulable */
-function undoCoach(){if(!coachUndo)return;try{localStorage.setItem(K(coachUndo.key),JSON.stringify(coachUndo.prev));localStorage.setItem("kalos__chg",String(Date.now()));reloadState();}catch(e){}coachUndo=null;toast("Changement annulé ✓");render();}
+function undoCoach(){if(!coachUndo)return;try{(Array.isArray(coachUndo)?coachUndo:[coachUndo]).forEach(u=>localStorage.setItem(K(u.key),JSON.stringify(u.prev)));localStorage.setItem("kalos__chg",String(Date.now()));reloadState();}catch(e){}coachUndo=null;toast("Changement annulé ✓");render();}
 async function runCoachAction(act){
   let note="";
   const _uk={PLANNING:"planning",SALLE:"salle",PROGRAMME:"program",NUTRITION:"nutrition",QUETES:"quests"}[act.type];
-  if(_uk){try{coachUndo={key:_uk,prev:JSON.parse(JSON.stringify(load(_uk)))};}catch(e){coachUndo=null;}}
+  if(_uk){try{coachUndo=[{key:_uk,prev:JSON.parse(JSON.stringify(load(_uk)))}];}catch(e){coachUndo=null;}}
   if(act.type==="PLANNING"){
     if(!planning.data){toast("Génère d'abord un planning (onglet Planning).");return "";}
     const n=await applyPlanningChange(act.req);note="✓ Planning mis à jour. "+(n||"");
+    try{if(Array.isArray(coachUndo))coachUndo.push({key:"quests",prev:JSON.parse(JSON.stringify(load("quests")))});if(await syncQuestsToPlan())note+=" Quêtes du jour réalignées.";}catch(e){}
   }
   else if(act.type==="SALLE")note=await applySalleChange(act.req);
   else if(act.type==="PROGRAMME")note=await applyProgramChange(act.req);
@@ -1291,6 +1292,15 @@ async function applyQuestsChange(req){
   save("quests",quests);
   return "✓ Quêtes du jour mises à jour — va voir l'Accueil.";
 }
+async function syncQuestsToPlan(){
+  const jo=todayJourObj();if(!jo||!jo.items||!jo.items.length)return false;
+  const items=jo.items.map(it=>(it.h||"")+" "+(it.titre||"")+" ["+(it.pilier||"esprit")+"]").join("\n");
+  const sys='Transforme le PLANNING D\'AUJOURD\'HUI en 3 à 6 QUÊTES concrètes et motivantes (une par action clé, garde l\'horaire dans le texte). Réponds UNIQUEMENT par un tableau JSON : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25, pillar = celui de l\'action.';
+  const r=await callAI({system:sys,messages:[{role:"user",text:items}],modelId:S.cheap,label:"quêtes (sync plan)",maxTokens:1200});
+  const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)return false;
+  quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
+  save("quests",quests);return true;
+}
 async function adaptPlanning(){
   if(!S.apiKey)return toast("Ajoute une clé API.");
   if(!planning.data)return toast("Génère d'abord un planning.");
@@ -1405,6 +1415,7 @@ items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items ma
     if(jo)jo.items=merged;else planning.data.jours.push({jour:jn,items:merged});
     planning.updated=Date.now();planning.note=data.note||"";
     save("planning",planning);
+    try{await syncQuestsToPlan();}catch(e){}
     momentMsgs.push({role:"assistant",text:"✓ "+(data.note||"C'est réorganisé.")+"\n\nTon planning et ton Accueil sont à jour."});
     msRender();toast("Journée réorganisée ✓");
     if(typeof render==="function"&&document.getElementById("main"))render();
