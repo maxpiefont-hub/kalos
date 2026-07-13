@@ -210,15 +210,15 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v40";
+const APP_VERSION="v41";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
-  google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
+  google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
   openai:[{id:"gpt-5.4-nano",name:"GPT-5.4 Nano (très bon marché)",in:0.20,out:1.25},{id:"gpt-5.4-mini",name:"GPT-5.4 Mini",in:0.75,out:4.50}],
   anthropic:[{id:"claude-haiku-4-5-20251001",name:"Claude Haiku 4.5 (coaching)",in:1.00,out:5.00},{id:"claude-sonnet-4-6",name:"Claude Sonnet 4.6 (puissant)",in:3.00,out:15.00}],
 };
 const DEFAULTS={
-  settings:{provider:"google",apiKey:"",cheap:"gemini-2.5-flash-lite",power:"gemini-2.5-flash",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30},
+  settings:{provider:"google",apiKey:"",cheap:"gemini-flash-lite-latest",power:"gemini-flash-latest",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30},
   profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null},
   nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null,targets:null},
   planning:{data:null,updated:null},planlog:{},
@@ -663,7 +663,7 @@ async function maybeLearnProfile(){
   }catch(e){}finally{_learnBusy=false;}
 }
 /* — Routage auto du modèle : Gemini par défaut, Claude en boost cadré — */
-function normSettings(){if(typeof S==="undefined"||!S)return;if(S.boost===undefined)S.boost=DEFAULTS.settings.boost;if(S.boostOn===undefined)S.boostOn=DEFAULTS.settings.boostOn;if(S.aiCap===undefined)S.aiCap=DEFAULTS.settings.aiCap;if(S.boostKey===undefined)S.boostKey="";}
+function normSettings(){if(typeof S==="undefined"||!S)return;if(S.boost===undefined)S.boost=DEFAULTS.settings.boost;if(S.boostOn===undefined)S.boostOn=DEFAULTS.settings.boostOn;if(S.aiCap===undefined)S.aiCap=DEFAULTS.settings.aiCap;if(S.boostKey===undefined)S.boostKey="";const _ids=(MODELS[S.provider]||[]).map(m=>m.id);if(_ids.length){if(!_ids.includes(S.cheap))S.cheap=MODELS[S.provider][0].id;if(!_ids.includes(S.power))S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;}}
 let boostNext=false; /* forcé par le bouton « Réflexion approfondie » */
 function aiProjMonthlyEur(){const tot=costs.reduce((a,c)=>a+(c.usd||0),0);const d={};costs.forEach(c=>d[new Date(c.ts).toISOString().slice(0,10)]=1);const dc=Object.keys(d).length||1;return tot/dc*30*(S.eur||0.92);}
 function boostAvailable(){if(!S.boostOn||!S.boost)return false;const bp=modelMeta(S.boost).provider;const hasKey=(bp===S.provider)?!!S.apiKey:!!S.boostKey;if(!hasKey)return false;if(S.aiCap&&aiProjMonthlyEur()>=S.aiCap)return false;return true;}
