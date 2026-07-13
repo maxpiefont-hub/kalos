@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v45";
+const APP_VERSION="v46";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -341,25 +341,25 @@ function compressImage(file,maxDim=1024,q=0.82){return new Promise((res,rej)=>{c
 function pickImage(maxDim=1024){return new Promise((res)=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.onchange=async()=>{const f=inp.files[0];if(!f){res(null);return;}try{res(await compressImage(f,maxDim));}catch(e){toast("Image illisible");res(null);}};inp.click();});}
 function pickImages(maxDim=1024){return new Promise((res)=>{const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.multiple=true;inp.onchange=async()=>{const fs=[...inp.files];if(!fs.length){res([]);return;}try{const out=[];for(const f of fs)out.push(await compressImage(f,maxDim));res(out);}catch(e){toast("Image illisible");res([]);}};inp.click();});}
 
-async function callAI({system,messages,modelId,label,maxTokens=3000}){
-  system=(nowContext()+"\n\n")+(system||"");
+async function callAI({system,messages,modelId,label,maxTokens=3000,_fallback}){
+  const sysFull=(nowContext()+"\n\n")+(system||"");
   const meta=modelMeta(modelId),prov=meta.provider;let url,opts,parse;
   const useKey=(prov===S.provider)?S.apiKey:(S.boostKey||S.apiKey);
   if(!useKey)throw new Error("Aucune clé API pour "+prov+". Va dans Réglages.");
   if(prov==="anthropic"){
     url="https://api.anthropic.com/v1/messages";
     const mm=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);return ims.length?{role:m.role,content:[{type:"text",text:m.text||""},...ims.map(b=>({type:"image",source:{type:"base64",media_type:"image/jpeg",data:b}}))]}:{role:m.role,content:m.text};});
-    opts={method:"POST",headers:{"content-type":"application/json","x-api-key":useKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:modelId,max_tokens:maxTokens,system,messages:mm})};
+    opts={method:"POST",headers:{"content-type":"application/json","x-api-key":useKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:modelId,max_tokens:maxTokens,system:sysFull,messages:mm})};
     parse=(d)=>({text:(d.content||[]).map(c=>c.text).join("\n"),inTok:d.usage?.input_tokens||0,outTok:d.usage?.output_tokens||0});
   }else if(prov==="openai"){
     url="https://api.openai.com/v1/chat/completions";
     const mm=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);return ims.length?{role:m.role,content:[{type:"text",text:m.text||""},...ims.map(b=>({type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b}}))]}:{role:m.role,content:m.text};});
-    opts={method:"POST",headers:{"content-type":"application/json","Authorization":"Bearer "+useKey},body:JSON.stringify({model:modelId,messages:[{role:"system",content:system},...mm],max_completion_tokens:maxTokens})};
+    opts={method:"POST",headers:{"content-type":"application/json","Authorization":"Bearer "+useKey},body:JSON.stringify({model:modelId,messages:[{role:"system",content:sysFull},...mm],max_completion_tokens:maxTokens})};
     parse=(d)=>({text:d.choices?.[0]?.message?.content||"",inTok:d.usage?.prompt_tokens||0,outTok:d.usage?.completion_tokens||0});
   }else{
     url="https://generativelanguage.googleapis.com/v1beta/models/"+modelId+":generateContent?key="+encodeURIComponent(useKey);
     const contents=messages.map(m=>{const ims=m.imgs||(m.img?[m.img]:[]);const parts=[{text:m.text||""}];ims.forEach(b=>parts.push({inline_data:{mime_type:"image/jpeg",data:b}}));return{role:m.role==="assistant"?"model":"user",parts};});
-    opts={method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents,generationConfig:{maxOutputTokens:maxTokens}})};
+    opts={method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({systemInstruction:{parts:[{text:sysFull}]},contents,generationConfig:{maxOutputTokens:maxTokens}})};
     parse=(d)=>({text:(d.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("\n"),inTok:d.usageMetadata?.promptTokenCount||0,outTok:d.usageMetadata?.candidatesTokenCount||0});
   }
   let res,data,att=0;
@@ -367,6 +367,7 @@ async function callAI({system,messages,modelId,label,maxTokens=3000}){
     res=await fetch(url,opts);data=await res.json();
     if(res.ok)break;
     if((res.status===503||res.status===429||res.status===500)&&att<2){att++;await new Promise(r=>setTimeout(r,1200*att));continue;}
+    if((res.status===503||res.status===429||res.status===500)&&!_fallback&&S.cheap&&modelId!==S.cheap){return await callAI({system,messages,modelId:S.cheap,label:(label||"")+" (repli éco)",maxTokens,_fallback:true});}
     throw new Error("Erreur API ("+res.status+") : "+(data.error?.message||JSON.stringify(data).slice(0,180)));
   }
   const out=parse(data);
