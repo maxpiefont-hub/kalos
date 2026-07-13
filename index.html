@@ -122,7 +122,7 @@
     .msg{max-width:90%}
   }
   /* ===== Barre « Où tu en es ? » (pilote global) ===== */
-  .momentFab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + var(--safe-bot));z-index:55;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:10px 16px 10px 18px;box-shadow:0 6px 22px rgba(14,95,174,.18);cursor:pointer;max-width:calc(100% - 28px);width:460px;color:var(--grey);font-size:14px}
+  .momentFab{position:fixed;right:16px;bottom:calc(18px + var(--safe-bot));z-index:55;display:flex;align-items:center;gap:9px;background:var(--accent);border:0;border-radius:999px;padding:11px 16px;box-shadow:0 6px 22px rgba(14,95,174,.30);cursor:pointer;max-width:calc(100% - 28px);width:auto;color:#fff;font-size:14px;font-weight:600}
   .momentFab:hover{border-color:var(--accent)}
   .momentFab .mfic{font-size:18px}
   .momentFab .mftxt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -182,7 +182,7 @@
   <main class="main" id="main"></main>
 </div>
 <nav class="bottomnav" id="bnav"></nav>
-<div class="momentFab" id="momentFab"><span class="mfic">🧭</span><span class="mftxt">Où tu en es ? Dis ton moment…</span><span class="mfgo">→</span></div>
+<div class="momentFab" id="momentFab"><span class="mfic">🧭</span><span class="mftxt">Adapter ma journée</span></div>
 <div id="momentSheet">
   <div class="ms-sheet">
     <div class="ms-head">🧭 Où tu en es ?<button class="ms-x" id="msClose">✕</button></div>
@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v42";
+const APP_VERSION="v43";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -1422,7 +1422,7 @@ items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items ma
   }catch(e){toast(e.message);momentMsgs.push({role:"assistant",text:"Hmm, je n'ai pas réussi à réécrire — réessaie en reformulant."});msRender();}
 }
 (function(){
-  const fab=$("#momentFab");if(fab)fab.onclick=openMoment;
+  const fab=$("#momentFab");if(fab)fab.onclick=()=>navTo("decouverte");
   const c=$("#msClose");if(c)c.onclick=closeMoment;
   const sd=$("#msSend");if(sd)sd.onclick=momentSend;
   const sheet=$("#momentSheet");if(sheet)sheet.onclick=(e)=>{if(e.target===sheet)closeMoment();};
