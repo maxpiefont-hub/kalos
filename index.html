@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v43";
+const APP_VERSION="v44";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -219,7 +219,7 @@ const MODELS={
 };
 const DEFAULTS={
   settings:{provider:"google",apiKey:"",cheap:"gemini-flash-lite-latest",power:"gemini-flash-latest",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30},
-  profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null},
+  profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null,sessions:[],log:{}},
   nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null,targets:null},
   planning:{data:null,updated:null},planlog:{},
   checkin:{date:"",mood:""},
@@ -829,13 +829,17 @@ function rProfil(){
 let sallePending=[];
 function rSalle(){
   $("#main").innerHTML=`${moiTabs("salle")}${keyBanner()}
-   <div class="card"><label>Ton programme actuel (séances, exercices, séries/répétitions...)</label>
-     <textarea id="salleIn" placeholder="ex. Lundi pecs/triceps : développé couché 4x8...">${esc(salle.input)}</textarea>
+   <div class="card"><label>Ton programme (séances, exercices, séries/répétitions, charges...)</label>
+     <textarea id="salleIn" placeholder="ex. Lundi pecs/triceps : développé couché 4x8 à 40kg...">${esc(salle.input)}</textarea>
      <div id="sallePrevWrap" style="margin-top:8px"></div>
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="analyseSalle">✨ Améliorer mon programme</button></div></div>
-   <div class="card"><h2>Ton programme amélioré</h2><div class="formatted" id="salleOut">${salle.analysis?fmt(salle.analysis):'<span class="muted">Aucune analyse pour le moment.</span>'}</div>${salle.updated?`<p class="muted" style="margin-top:8px">Analysé le ${new Date(salle.updated).toLocaleString("fr-FR")}</p>`:""}</div>`;
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="iconbtn" id="sallePhoto" title="Photo du programme">📷 Photo</button><button class="btn" id="structSalle">🏋️ Créer mes séances</button><button class="ghost" id="analyseSalle">💬 Conseils</button></div></div>
+   <div class="card"><h2>Mes séances <span class="muted" style="font-size:13px;font-weight:400">· coche + note ta charge, tu vois ta progression</span></h2><div id="seancesWrap">${renderSeances()}</div></div>
+   ${salle.analysis?`<div class="card soft" style="padding:0;overflow:hidden"><button id="advToggle" style="background:none;border:0;width:100%;text-align:left;font:inherit;font-weight:600;color:var(--ink);padding:14px 16px;cursor:pointer">💬 Conseils détaillés ▾</button><div id="advBox" class="formatted" style="display:none;padding:0 16px 14px">${fmt(salle.analysis)}</div></div>`:""}`;
   $("#sallePhoto").onclick=async()=>{const ims=await pickImages(1280);if(ims.length){sallePending=sallePending.concat(ims);$("#sallePrevWrap").innerHTML=`<div class="imgprev">${sallePending.map(i=>`<img src="${i.dataUrl}">`).join("")}<span>${sallePending.length} photo(s) jointe(s)</span><button class="ghost sm" id="rmS" style="margin-left:auto">✕</button></div>`;$("#rmS").onclick=()=>{sallePending=[];$("#sallePrevWrap").innerHTML="";};}};
+  $("#structSalle").onclick=structurerSeances;
   $("#analyseSalle").onclick=analyseSalle;
+  const at=$("#advToggle");if(at)at.onclick=()=>{const bx=$("#advBox");if(bx)bx.style.display=bx.style.display==="none"?"block":"none";};
+  bindSeances();
 }
 async function analyseSalle(){
   if(!S.apiKey)return toast("Ajoute une clé API.");
@@ -862,6 +866,60 @@ ${SCI}`;
   }catch(e){toast(e.message);}finally{if(b){b.disabled=false;}}
 }
 
+function seLast(nom){const h=(salle.log&&salle.log[nom])||[];return h.length?h[h.length-1]:null;}
+function renderSeances(){
+  const SS=salle.sessions||[];
+  if(!SS.length)return '<span class="muted">Clique « 🏋️ Créer mes séances » : Kalos transforme ton programme en séances à cocher, avec le suivi de tes charges pour voir ta progression.</span>';
+  const jToday=(typeof todayJourName==="function")?todayJourName().toLowerCase():"";
+  return SS.map((s,si)=>{const isToday=jToday&&String(s.jour||"").toLowerCase()===jToday;
+    return `<div style="border:1px solid ${isToday?"var(--accent)":"var(--line)"};border-radius:12px;padding:12px;margin-bottom:12px">
+    <div style="font-weight:700;color:var(--accent-d);margin-bottom:8px">${esc(s.nom||("Séance "+(si+1)))}${s.jour?` <span class="muted" style="font-weight:400;font-size:12px">· ${esc(s.jour)}</span>`:""}${isToday?' <span class="pill" style="background:var(--accent)">aujourd\'hui</span>':""}</div>
+    ${(s.exos||[]).map((e,ei)=>{const last=seLast(e.nom);const doneToday=last&&last.date===todayStr();
+      return `<div class="quest ${doneToday?"pi-done":""}" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="flex:1;min-width:0"><b>${esc(e.nom||"")}</b> <span class="muted" style="font-size:13px">${esc(String(e.series||"?"))}×${esc(String(e.reps||"?"))}</span></span>
+          ${last?`<span class="pill" style="background:var(--sante)">dernière ${esc(String(last.charge))} kg</span>`:`<span class="muted" style="font-size:12px">1ʳᵉ fois</span>`}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" inputmode="decimal" step="0.5" placeholder="${last?esc(String(last.charge)):"charge"} kg" data-exch="${si}-${ei}" style="max-width:130px;padding:8px">
+          <button class="btn sm" data-exlog="${si}-${ei}">✓ Noté</button>
+        </div>
+      </div>`;}).join("")}
+  </div>`;}).join("");
+}
+function bindSeances(){
+  document.querySelectorAll("[data-exlog]").forEach(b=>b.onclick=()=>{
+    const p=b.dataset.exlog.split("-"),si=+p[0],ei=+p[1];
+    const s=(salle.sessions||[])[si];if(!s)return;const e=(s.exos||[])[ei];if(!e)return;
+    const inp=document.querySelector('[data-exch="'+si+'-'+ei+'"]');
+    const cv=inp&&inp.value!==""?+inp.value:(seLast(e.nom)?seLast(e.nom).charge:null);
+    if(cv==null||isNaN(cv))return toast("Note ta charge (kg) d'abord.");
+    if(!salle.log)salle.log={};if(!salle.log[e.nom])salle.log[e.nom]=[];
+    salle.log[e.nom].push({date:todayStr(),charge:cv,reps:e.reps||""});
+    if(salle.log[e.nom].length>40)salle.log[e.nom]=salle.log[e.nom].slice(-40);
+    save("salle",salle);addXp("sante",5);toast("Noté ✓ +5 XP");render();
+  });
+}
+async function structurerSeances(){
+  if(!S.apiKey)return toast("Ajoute une clé API.");
+  const txt=($("#salleIn").value||"").trim();salle.input=txt;save("salle",salle);
+  if(!txt&&!sallePending.length)return toast("Écris ton programme ou ajoute une photo.");
+  const b=$("#structSalle");if(b){b.disabled=true;b.innerHTML='<span class="spin"></span> Création...';}
+  try{
+    const sys=`Tu es Kalos, coach sportif (kalokagathia). Transforme le PROGRAMME DE SALLE (texte et/ou photo) en séances STRUCTURÉES, adaptées au profil et aux objectifs. Sûr pour le dos/genoux fragiles. Chaque exercice : nom clair, séries, répétitions, charge de départ estimée si possible (sinon ""). Mets un échauffement court en 1er exo de chaque séance.
+Réponds UNIQUEMENT par un JSON valide, sans texte autour :
+{"sessions":[{"nom":"Haut du corps","jour":"Lundi","exos":[{"nom":"Développé couché","series":4,"reps":"8-10","charge":40,"repos":"90s"}]}]}
+3 à 6 séances, 4 à 7 exercices par séance. `+SCI;
+    const objs=(profile.card&&profile.card.objectifs&&profile.card.objectifs.length)?profile.card.objectifs.join(" · "):"";
+    const msg={role:"user",text:"PROFIL:\n"+String(profile.text||"(non renseigné)").slice(0,1500)+(objs?("\n\nOBJECTIFS:\n"+objs):"")+"\n\nPROGRAMME:\n"+(txt||"(voir photo)")};
+    if(sallePending.length)msg.imgs=sallePending.map(i=>i.b64);
+    const r=await callAI({system:sys,messages:[msg],modelId:S.power,label:"structurer séances",maxTokens:4000});
+    const d=extractJSONobj(r.text);
+    if(!d||!Array.isArray(d.sessions)||!d.sessions.length)throw new Error("Réponse non exploitable, réessaie.");
+    salle.sessions=d.sessions.map(s=>({nom:String(s.nom||"Séance"),jour:s.jour||"",exos:(Array.isArray(s.exos)?s.exos:[]).map(e=>({nom:String(e.nom||""),series:e.series||"",reps:e.reps||"",charge:(e.charge!=null&&e.charge!=="")?+e.charge:"",repos:e.repos||""})).filter(e=>e.nom)}));
+    salle.updated=Date.now();save("salle",salle);sallePending=[];toast("Séances créées ✓");render();
+  }catch(e){toast(e.message);if(b){b.disabled=false;b.textContent="🏋️ Créer mes séances";}}
+}
 let mealPending=null;
 function mealsToday(){return (nutrition.meals||[]).filter(m=>m.date===todayStr());}
 function mealsSum(tm){return tm.reduce((a,m)=>({k:a.k+(+m.kcal||0),kmin:a.kmin+(+m.kmin||+m.kcal||0),kmax:a.kmax+(+m.kmax||+m.kcal||0),p:a.p+(+m.prot||0),pmin:a.pmin+(+m.pmin||+m.prot||0),pmax:a.pmax+(+m.pmax||+m.prot||0),g:a.g+(+m.gluc||0),l:a.l+(+m.lip||0)}),{k:0,kmin:0,kmax:0,p:0,pmin:0,pmax:0,g:0,l:0});}
