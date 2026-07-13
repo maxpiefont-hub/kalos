@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v39";
+const APP_VERSION="v40";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-2.5-flash-lite",name:"Gemini 2.5 Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-2.5-flash",name:"Gemini 2.5 Flash (équilibré)",in:0.30,out:2.50}],
@@ -230,7 +230,7 @@ const DEFAULTS={
 const K=(k)=>"kalos_"+k;
 function load(k){try{const v=localStorage.getItem(K(k));return v?JSON.parse(v):structuredClone(DEFAULTS[k]);}catch(e){return structuredClone(DEFAULTS[k]);}}
 function save(k,v){try{localStorage.setItem(K(k),JSON.stringify(v));localStorage.setItem("kalos__chg",String(Date.now()));}catch(e){toast("Stockage plein — exporte/efface des photos.");}cloudSave();}
-let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),planlog=load("planlog"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat"),coachSt=load("coach");
+let S=load("settings"),profile=load("profile"),program=load("program"),salle=load("salle"),nutrition=load("nutrition"),planning=load("planning"),planlog=load("planlog"),checkin=load("checkin"),quests=load("quests"),progress=load("progress"),coffre=load("coffre"),tracking=load("tracking"),costs=load("costs"),chat=load("chat"),coachSt=load("coach");normSettings();
 const $=(s,el=document)=>el.querySelector(s);
 const esc=(t)=>(t||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2600);}
@@ -663,6 +663,7 @@ async function maybeLearnProfile(){
   }catch(e){}finally{_learnBusy=false;}
 }
 /* — Routage auto du modèle : Gemini par défaut, Claude en boost cadré — */
+function normSettings(){if(typeof S==="undefined"||!S)return;if(S.boost===undefined)S.boost=DEFAULTS.settings.boost;if(S.boostOn===undefined)S.boostOn=DEFAULTS.settings.boostOn;if(S.aiCap===undefined)S.aiCap=DEFAULTS.settings.aiCap;if(S.boostKey===undefined)S.boostKey="";}
 let boostNext=false; /* forcé par le bouton « Réflexion approfondie » */
 function aiProjMonthlyEur(){const tot=costs.reduce((a,c)=>a+(c.usd||0),0);const d={};costs.forEach(c=>d[new Date(c.ts).toISOString().slice(0,10)]=1);const dc=Object.keys(d).length||1;return tot/dc*30*(S.eur||0.92);}
 function boostAvailable(){if(!S.boostOn||!S.boost)return false;const bp=modelMeta(S.boost).provider;const hasKey=(bp===S.provider)?!!S.apiKey:!!S.boostKey;if(!hasKey)return false;if(S.aiCap&&aiProjMonthlyEur()>=S.aiCap)return false;return true;}
@@ -1423,7 +1424,7 @@ const SB_KEY="sb_publishable_Ce5qJsMMujnEijotMu0zkw_YpeVDDKN";
 const ALLKEYS=["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"];
 let sb=null; try{ if(window.supabase) sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
 let currentUser=null, cloudTimer=null;
-function reloadState(){S=load("settings");profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");coachSt=load("coach");}
+function reloadState(){S=load("settings");normSettings();profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");coachSt=load("coach");}
 function showAuth(msg){const o=$("#authOverlay");if(o){o.style.display="flex";if(msg!==undefined)$("#authMsg").textContent=msg;}}
 function hideAuth(){const o=$("#authOverlay");if(o)o.style.display="none";}
 function startApp(){hideAuth();buildNav();refreshLevel();render();}
