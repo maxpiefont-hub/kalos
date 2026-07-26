@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v47";
+const APP_VERSION="v48";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -221,7 +221,7 @@ const DEFAULTS={
   settings:{provider:"google",apiKey:"",cheap:"gemini-flash-lite-latest",power:"gemini-flash-latest",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30},
   profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null,sessions:[],log:{}},
   nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null,targets:null},
-  planning:{data:null,updated:null},planlog:{},
+  planning:{data:null,updated:null,extra:{}},planlog:{},
   checkin:{date:"",mood:""},
   quests:{date:"",items:[]},progress:{xp:0,pillars:{sante:0,esprit:0,culture:0,art:0,travail:0,relations:0}},
   coffre:{balance:0,lastMonth:"",rewards:[]},tracking:[],costs:[],chat:[],
@@ -240,39 +240,102 @@ const todayStr=()=>dateISO(new Date());
 const monthStr=()=>{const d=new Date();return d.getFullYear()+"-"+p2(d.getMonth()+1);};
 const dayMs=86400000;
 const dateAt=(off)=>new Date(Date.now()+off*dayMs);
-/* — suivi du planning par vraie date (fait / loupé) — */
-const itemKey=(it)=>String(it.h||"")+"|"+String(it.titre||"").slice(0,40);
-function setPlanDone(dateS,key,val){if(!planlog[dateS])planlog[dateS]={};if(val)planlog[dateS][key]=true;else delete planlog[dateS][key];save("planlog",planlog);}
-function jourObjFor(d){if(!planning.data||!planning.data.jours)return null;const n=JOURS_FR[d.getDay()].toLowerCase();return planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===n)||null;}
-function itemStates(items,dateS){
-  const today=todayStr(),now=nowHM(),done=planlog[dateS]||{};
-  let cur=-1;
-  if(dateS===today)items.forEach((it,i)=>{if(String(it.h||"")<=now)cur=i;});
-  return items.map((it,i)=>{
-    if(done[itemKey(it)])return "done";
-    if(dateS<today)return "miss";
-    if(dateS>today)return "up";
-    return i<cur?"miss":(i===cur?"now":"up");
+/* — OBJECTIFS DU JOUR : une seule liste, cochable quand on veut, qui rapporte de l'XP.
+   Plus d'heure imposée ni d'état "loupé" : un objectif est FAIT ou À FAIRE, point.
+   Le champ "moment" (matin/midi/aprem/soir) reste stocké — réservé à la version commerciale. */
+const itemKey=(it)=>it.uid?("u"+it.uid):(String(it.h||"")+"|"+String(it.titre||"").slice(0,40));
+const itemXp=(it)=>Math.max(5,Math.min(25,+(it&&it.xp)||10));
+const MOMENTS={matin:"Matin",midi:"Midi",aprem:"Après-midi",soir:"Soir"};
+function momentOf(it){
+  if(it&&it.moment&&MOMENTS[it.moment])return it.moment;
+  const h=parseInt(String((it&&it.h)||"").slice(0,2),10);
+  if(isNaN(h))return "matin";
+  return h<11?"matin":(h<14?"midi":(h<18?"aprem":"soir"));
+}
+function migratePlan(){
+  let ch=false;
+  if(!planning.extra||typeof planning.extra!=="object"||Array.isArray(planning.extra)){planning.extra={};ch=true;}
+  ((planning.data&&planning.data.jours)||[]).forEach(j=>(j.items||[]).forEach(it=>{
+    if(!it.moment){it.moment=momentOf(it);ch=true;}
+    if(!it.xp){it.xp=itemXp(it);ch=true;}
+  }));
+  const limite=dateISO(new Date(Date.now()-60*dayMs));
+  Object.keys(planning.extra).forEach(d=>{
+    if(!Array.isArray(planning.extra[d])||d<limite){delete planning.extra[d];ch=true;return;} /* purge > 60 jours */
+    planning.extra[d].forEach(it=>{if(!it.xp){it.xp=itemXp(it);ch=true;}});
   });
+  if(ch)save("planning",planning);
+}
+function setPlanDone(dateS,key,val){if(!planlog[dateS])planlog[dateS]={};if(val)planlog[dateS][key]=val;else delete planlog[dateS][key];save("planlog",planlog);}
+function jourObjFor(d){if(!planning.data||!planning.data.jours)return null;const n=JOURS_FR[d.getDay()].toLowerCase();return planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===n)||null;}
+/* objectifs d'une date = modèle du jour de la semaine + objectifs ajoutés/reportés sur cette date, moins ceux reportés ailleurs */
+function dayItemsFor(d){
+  const dateS=dateISO(d),jo=jourObjFor(d);
+  const base=(jo&&jo.items)||[];
+  const extra=(planning.extra&&planning.extra[dateS])||[];
+  const log=planlog[dateS]||{};
+  return base.concat(extra).filter(it=>log[itemKey(it)]!=="moved");
+}
+const dayItemsToday=()=>dayItemsFor(new Date());
+function findDayItem(dateS,key){
+  try{return dayItemsFor(new Date(dateS+"T12:00:00")).find(it=>itemKey(it)===key)||null;}catch(e){return null;}
+}
+function itemStates(items,dateS){const done=planlog[dateS]||{};return items.map(it=>done[itemKey(it)]===true?"done":"todo");}
+function toggleObjective(dateS,key,on){
+  const it=findDayItem(dateS,key)||{};
+  const was=(planlog[dateS]||{})[key]===true;
+  if(on&&!was){setPlanDone(dateS,key,true);addXp(it.pilier||"esprit",itemXp(it));toast("+"+itemXp(it)+" XP "+((PILLARS[it.pilier]||{}).label||""));}
+  else if(!on&&was){setPlanDone(dateS,key,false);addXp(it.pilier||"esprit",-itemXp(it));}
+}
+function moveToTomorrow(dateS,key){
+  const it=findDayItem(dateS,key);if(!it)return;
+  const nx=dateISO(new Date(new Date(dateS+"T12:00:00").getTime()+dayMs));
+  if(!planning.extra)planning.extra={};
+  if(!Array.isArray(planning.extra[nx]))planning.extra[nx]=[];
+  planning.extra[nx].push({uid:String(Date.now())+String(Math.floor(Math.random()*1000)),h:"",moment:it.moment||"matin",titre:it.titre||"",pilier:it.pilier||"esprit",pourquoi:it.pourquoi||"",comment:it.comment||"",xp:itemXp(it)});
+  save("planning",planning);
+  setPlanDone(dateS,key,"moved");
+  toast("Reporté à demain ✓");
+}
+function addObjective(dateS,titre,pilier){
+  titre=String(titre||"").trim();if(!titre)return false;
+  if(!planning.extra)planning.extra={};
+  if(!Array.isArray(planning.extra[dateS]))planning.extra[dateS]=[];
+  planning.extra[dateS].push({uid:String(Date.now())+String(Math.floor(Math.random()*1000)),h:"",moment:"matin",titre:titre,pilier:(PILLARS[pilier]?pilier:"esprit"),pourquoi:"",comment:"",xp:10});
+  save("planning",planning);return true;
 }
 function renderDayItems(dateS,items,compact){
-  if(!items||!items.length)return '<span class="muted">Rien de prévu.</span>';
+  if(!items||!items.length)return '<span class="muted">Aucun objectif pour ce jour.</span>';
   const sts=itemStates(items,dateS);
   return items.map((it,ii)=>{
     const st=sts[ii],k=itemKey(it);
     const pil=PILLARS[it.pilier]||{label:esc(it.pilier||""),color:"var(--grey)"};
-    const badge=st==="now"?'<span class="pill" style="background:var(--accent)">maintenant</span>':(st==="miss"?'<span class="pill" style="background:var(--danger)">loupé ?</span>':"");
     const hasInfo=!compact&&(it.pourquoi||it.comment);
-    return `<div class="quest pi-${st}" style="flex-direction:column;align-items:stretch;gap:6px">
-      <div style="display:flex;align-items:center;gap:10px">
+    return `<div class="quest ${st==="done"?"pi-done":""}" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div style="display:flex;align-items:center;gap:9px">
         <input type="checkbox" data-plandone="${dateS}~${encodeURIComponent(k)}" ${st==="done"?"checked":""}>
-        <b style="color:var(--accent-d);white-space:nowrap">${esc(it.h||"")}</b>
-        <span style="flex:1;min-width:0${st==="done"?";text-decoration:line-through;opacity:.7":""}">${esc(it.titre||"")}</span>
-        ${badge}<span class="pill" style="background:${pil.color}">${pil.label}</span>${hasInfo?`<button class="ghost sm" data-pinfo="d${dateS}i${ii}">ℹ️</button>`:""}
+        <span title="${esc(pil.label)}" style="width:9px;height:9px;border-radius:50%;background:${pil.color};flex:none"></span>
+        <span style="flex:1;min-width:0${st==="done"?";text-decoration:line-through;opacity:.7":""}">${esc(it.titre||"")}${compact?"":` <span class="pill" style="background:${pil.color};margin-left:4px">${pil.label}</span>`}</span>
+        <span class="q-x" style="white-space:nowrap;flex:none">+${itemXp(it)}${compact?"":" XP"}</span>
+        ${st==="done"?"":`<button class="ghost sm" data-pmove="${dateS}~${encodeURIComponent(k)}" title="Reporter à demain" style="flex:none;padding:5px 8px">⏭</button>`}
+        ${hasInfo?`<button class="ghost sm" data-pinfo="d${dateS}i${ii}" style="flex:none;padding:5px 8px">ℹ️</button>`:""}
       </div>
       ${hasInfo?`<div id="pinfod${dateS}i${ii}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${it.pourquoi?("<b>Pourquoi :</b> "+esc(it.pourquoi)+"<br>"):""}${it.comment?("<b>Comment :</b> "+esc(it.comment)):""}</div>`:""}
     </div>`;
   }).join("");
+}
+function objAdder(dateS){
+  return `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+    <input id="objNew" placeholder="Ajouter un objectif…" style="flex:1;min-width:150px" data-objdate="${dateS}">
+    <select id="objPil" style="width:auto;flex:none">${Object.keys(PILLARS).map(p=>`<option value="${p}">${PILLARS[p].label}</option>`).join("")}</select>
+    <button class="ghost sm" id="objAdd" style="flex:none">+ Ajouter</button>
+  </div>`;
+}
+function bindObjAdder(){
+  const inp=$("#objNew"),btn=$("#objAdd");if(!inp||!btn)return;
+  const go=()=>{const d=inp.getAttribute("data-objdate")||todayStr();const p=($("#objPil")||{}).value;if(addObjective(d,inp.value,p)){toast("Objectif ajouté ✓");render();}};
+  btn.onclick=go;
+  inp.onkeydown=(e)=>{if(e.key==="Enter"){e.preventDefault();go();}};
 }
 function saison(){const m=new Date().getMonth()+1;if(m>=3&&m<=5)return"printemps";if(m>=6&&m<=8)return"été";if(m>=9&&m<=11)return"automne";return"hiver";}
 let ctxExtra="";
@@ -317,18 +380,19 @@ function nowContext(){
   const d=new Date();
   const date=d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
   const heure=d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
-  const jours=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
   let plan="";
-  if(planning&&planning.data&&planning.data.jours){
-    const jd=planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===jours[d.getDay()].toLowerCase());
-    if(jd&&jd.items&&jd.items.length){
+  try{
+    const items=dayItemsToday();
+    if(items.length){
       const dl=planlog[todayStr()]||{};
-      const items=jd.items.map(it=>(it.h||"")+" "+(it.titre||"")+(dl[itemKey(it)]?" (fait ✓)":((it.h||"")<heure?" (pas encore fait)":""))).join(" · ");
-      const next=jd.items.find(it=>(it.h||"")>=heure&&!dl[itemKey(it)]);
-      plan="\nPlanning d'aujourd'hui (avec état réel) : "+items+(next?(". Prochaine action prévue : "+(next.h||"")+" "+(next.titre||"")+"."):". Journée presque terminée.");
+      const list=items.map(it=>(dl[itemKey(it)]===true?"[fait ✓] ":"[à faire] ")+(it.titre||"")).join(" · ");
+      const reste=items.filter(it=>dl[itemKey(it)]!==true);
+      plan="\nObjectifs d'aujourd'hui (liste sans horaires — la personne coche quand elle veut) : "+list
+        +(reste.length?(". Il en reste "+reste.length+", le prochain : "+(reste[0].titre||"")+"."):". Tout est fait aujourd'hui — félicite-la.");
     }
-  }
-  return "CONTEXTE (tu connais déjà ces infos, ne les redemande JAMAIS) : nous sommes le "+date+", il est "+heure+", saison "+saison()+"."+ctxExtra+plan;
+  }catch(e){}
+  return "CONTEXTE (tu connais déjà ces infos, ne les redemande JAMAIS) : nous sommes le "+date+", il est "+heure+", saison "+saison()+"."+ctxExtra+plan
+    +"\nIMPORTANT : Kalos n'utilise PLUS d'emploi du temps horaire. On travaille avec une LISTE D'OBJECTIFS à cocher quand la personne veut — ne propose jamais d'heures fixes, ne dis jamais qu'elle est « en retard ».";
 }
 const USD=(n)=>"$"+n.toFixed(n<0.01?5:4);
 const EUR=(n)=>(n*S.eur).toFixed(n*S.eur<0.01?5:4)+" €";
@@ -376,11 +440,11 @@ async function callAI({system,messages,modelId,label,maxTokens=3000,_fallback}){
 }
 
 const NAV_MAIN=[{id:"accueil",ic:"🏠",label:"Aujourd'hui"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"moi",ic:"🪪",label:"Moi"},{id:"progression",ic:"📈",label:"Progrès"},{id:"reglages",ic:"⚙️",label:"Réglages"}];
-const NAV_GROUP={moi:["profil","programme","salle","nutrition"],progression:["progression","quetes","coffre","suivi"],reglages:["reglages","couts"],decouverte:["decouverte","demarrage"]};
+const NAV_GROUP={moi:["profil","programme","salle","nutrition"],progression:["progression","coffre","suivi"],reglages:["reglages","couts"],decouverte:["decouverte","demarrage"]};
 let current="accueil";
 const CORE=[{id:"accueil",ic:"🏠",label:"Aujourd'hui"},{id:"decouverte",ic:"🧭",label:"Coach"},{id:"calendrier",ic:"📅",label:"Planning"},{id:"progression",ic:"📈",label:"Progrès"},{id:"moi",ic:"🪪",label:"Moi"}];
 function navParent(id){for(const k in NAV_GROUP)if(NAV_GROUP[k].includes(id))return k;return id;}
-function navTo(id){if(id==="moi")id="profil";if(id==="calendrier")planDay=0;current=id;buildNav();render();window.scrollTo(0,0);}
+function navTo(id){if(id==="moi")id="profil";if(id==="quetes")id="accueil";if(id==="calendrier")planDay=0;current=id;buildNav();render();window.scrollTo(0,0);}
 function buildNav(){
   const par=navParent(current);
   const nav=$("#nav");if(nav){nav.innerHTML="";NAV_MAIN.forEach(p=>{const b=document.createElement("button");b.innerHTML=`<span class="ic">${p.ic}</span><span class="lbl">${p.label}</span>`;b.className=(p.id===par?"active":"");b.onclick=()=>navTo(p.id);nav.appendChild(b);});}
@@ -391,28 +455,31 @@ function moiTabs(active){
   return `<div class="moitabs">${T.map(t=>`<button class="mt ${t[0]===active?"on":""}" data-nav="${t[0]}">${t[1]} ${t[2]}</button>`).join("")}<button class="mt gear" data-nav="reglages" title="Réglages">⚙️</button></div>`;
 }
 function progresTabs(active){
-  const T=[["progression","📈","Progrès"],["quetes","⚔️","Quêtes"],["suivi","📏","Suivi"]];
+  const T=[["progression","📈","Progrès"],["suivi","📏","Suivi"]];
   return `<div class="moitabs">${T.map(t=>`<button class="mt ${t[0]===active?"on":""}" data-nav="${t[0]}">${t[1]} ${t[2]}</button>`).join("")}<button class="mt gear" data-nav="reglages" title="Réglages">⚙️</button></div>`;
 }
-function render(){({accueil:rAccueil,demarrage:rOnboarding,decouverte:rDecouverte,profil:rProfil,salle:rSalle,nutrition:rNutrition,programme:rProgramme,calendrier:rCalendrier,quetes:rQuetes,progression:rProgression,coffre:rProgression,suivi:rSuivi,couts:rCouts,reglages:rReglages,moi:rProfil}[current])();}
+function render(){({accueil:rAccueil,demarrage:rOnboarding,decouverte:rDecouverte,profil:rProfil,salle:rSalle,nutrition:rNutrition,programme:rProgramme,calendrier:rCalendrier,quetes:rAccueil,progression:rProgression,coffre:rProgression,suivi:rSuivi,couts:rCouts,reglages:rReglages,moi:rProfil}[current])();}
 const keyBanner=()=>S.apiKey?"":`<div class="banner">⚠️ Aucune clé API. Va dans <b>⚙️ Réglages</b> pour brancher l'IA.</div>`;
 
 function rAccueil(){
   const {lvl,into,need}=levelInfo();
-  const todayQ=quests.date===todayStr()?quests.items:[];
-  const doneQ=todayQ.filter(q=>q.done).length;
   const jours=["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
   const todayName=jours[new Date().getDay()];
-  let todayPlan=[];
-  if(planning.data&&planning.data.jours){const jd=planning.data.jours.find(j=>String(j.jour||"").toLowerCase()===todayName.toLowerCase());if(jd)todayPlan=jd.items||[];}
+  const tds=todayStr();
+  const todayPlan=dayItemsToday();
+  const stsT=itemStates(todayPlan,tds);
+  const doneN=stsT.filter(s=>s==="done").length;
+  const firstTodo=todayPlan.find((it,i)=>stsT[i]!=="done");
   const lastT=tracking[0]||{};
-  const ci=(checkin.date===todayStr())?checkin.mood:"";
+  const ci=(checkin.date===tds)?checkin.mood:"";
   let next;
   if(!S.apiKey) next={t:"Branche l'IA pour démarrer",go:"reglages"};
   else if(!profile.text) next={t:"Faire connaissance avec Kalos",go:"decouverte"};
   else if(!program.text) next={t:"Génère ton programme de vie",go:"programme"};
-  else if(!planning.data) next={t:"Génère ta semaine (planning)",go:"calendrier"};
-  else next={t:"Fais tes quêtes du jour",go:"quetes"};
+  else if(!planning.data) next={t:"Génère tes objectifs de la semaine",go:"calendrier"};
+  else if(firstTodo) next={t:(firstTodo.titre||"Ton prochain objectif"),go:"",key:itemKey(firstTodo),xp:itemXp(firstTodo)};
+  else if(todayPlan.length) next={t:"Tout est fait aujourd'hui 🎉",go:"progression"};
+  else next={t:"Ajoute un objectif pour aujourd'hui",go:"calendrier"};
   const cP=profile.card;
   const nomA=(cP&&cP.nom)?cP.nom:"";
   const avA=profile.avatar?`<img src="${profile.avatar}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.85);flex:none">`:`<div style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.22);border:2px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:800;flex:none">${esc((nomA||"K").slice(0,1).toUpperCase())}</div>`;
@@ -426,33 +493,34 @@ function rAccueil(){
        </div><span style="font-size:18px;opacity:.85">→</span>
      </div>
    </div>
-   <div class="card" style="background:linear-gradient(135deg,var(--accent),var(--accent-d));border:0;color:#fff;box-shadow:0 8px 22px rgba(14,95,174,.25)"><div style="font-size:11.5px;letter-spacing:.7px;text-transform:uppercase;opacity:.85;font-weight:600">Ta prochaine action</div><div style="font-size:22px;font-weight:800;margin:7px 0 14px;line-height:1.2">${esc(next.t)}</div><button class="btn hub-cta" data-nav="${next.go}" style="background:#fff;color:var(--accent-d)">Continuer →</button></div>
-   <div class="card"><h2 style="display:flex;align-items:baseline;gap:8px">Aujourd'hui · ${todayName} <span class="muted" id="nowClock" style="font-size:13px;font-weight:400;margin-left:auto">${nowHM()}</span></h2>
+   <div class="card" style="background:linear-gradient(135deg,var(--accent),var(--accent-d));border:0;color:#fff;box-shadow:0 8px 22px rgba(14,95,174,.25)"><div style="font-size:11.5px;letter-spacing:.7px;text-transform:uppercase;opacity:.85;font-weight:600">Ton prochain objectif</div><div style="font-size:22px;font-weight:800;margin:7px 0 14px;line-height:1.2">${esc(next.t)}</div>${next.key?`<button class="btn hub-cta" id="nextDone" style="background:#fff;color:var(--accent-d)">✓ C'est fait · +${next.xp} XP</button>`:`<button class="btn hub-cta" data-nav="${next.go||"accueil"}" style="background:#fff;color:var(--accent-d)">Continuer →</button>`}</div>
+   <div class="card"><h2 style="display:flex;align-items:baseline;gap:8px">Objectifs du jour · ${todayName} <span class="muted" style="font-size:13px;font-weight:400;margin-left:auto">${todayPlan.length?doneN+"/"+todayPlan.length:""}</span></h2>
+     <p class="sub" style="margin:-6px 0 12px">Coche quand tu veux. Chaque objectif rapporte de l'XP.</p>
      <div style="display:flex;gap:8px;margin-bottom:12px">
        <button class="ghost sm moodb ${ci==="bof"?"active":""}" data-mood="bof" style="flex:1">😔 Bof</button>
        <button class="ghost sm moodb ${ci==="moyen"?"active":""}" data-mood="moyen" style="flex:1">😐 Moyen</button>
        <button class="ghost sm moodb ${ci==="bien"?"active":""}" data-mood="bien" style="flex:1">🙂 Bien</button>
      </div>
      ${ci?`<p class="muted" style="margin:-4px 0 10px;font-size:12px">${ci==="bof"?"Noté — journée allégée conseillée.":ci==="bien"?"Noté — profites-en pour avancer !":"Noté."}</p>`:""}
-     ${todayPlan.length?renderDayItems(todayStr(),todayPlan,true):'<span class="muted">Pas encore de planning.</span>'}
-     <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><div style="font-size:13px;font-weight:600;color:var(--accent-d);margin-bottom:6px">⚔️ Quêtes du jour</div><div id="qList">${renderQuests()}</div></div>
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">Planning</button></div>
+     ${todayPlan.length?renderDayItems(tds,todayPlan,true):'<span class="muted">Aucun objectif — ajoute-en un, ou génère ta semaine depuis l\'onglet Planning.</span>'}
+     ${objAdder(tds)}
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost sm" data-nav="calendrier">📅 Ma semaine</button><button class="ghost sm" data-nav="decouverte">🧭 Adapter avec le Coach</button></div>
    </div>
    ${(function(){const t=(todayPlan||[]).map(it=>String(it.titre||"")).join(" ").toLowerCase();return /(nage|mer |mer,|marche|rando|dehors|vélo|velo|course|courir|plein air|piscine|balade|extérieur|exterieur)/.test(t)?renderWeatherCompact():"";})()}
    <div class="card soft">
    <button class="ghost sm" id="howBtn">ℹ️ Pourquoi Kalos marche</button>
    <div id="howBox" class="formatted" style="display:none;margin-top:10px;font-size:13.5px">
        <b>1. Une seule étape à la fois.</b> On s'engage mieux quand l'action suivante est claire et petite — l'effet des « petites victoires » sur la motivation (Amabile & Kramer, 2011).<br><br>
-       <b>2. Quand & où, pas seulement quoi.</b> Décider de l'heure et du lieu d'une action augmente fortement la probabilité de la faire (« intentions d'implémentation », Gollwitzer, 1999) — c'est tout le rôle du Planning.<br><br>
+       <b>2. Un objectif clair, pas un emploi du temps.</b> Décider concrètement de l'action et du lieu augmente la probabilité de la faire (« intentions d'implémentation », Gollwitzer, 1999) — mais une grille horaire rigide casse au premier imprévu et transforme la journée en échecs. Kalos garde l'objectif et te laisse choisir le moment.<br><br>
        <b>3. Une motivation qui tient.</b> On tient sur la durée quand on se sent autonome, compétent et relié à ses valeurs (théorie de l'autodétermination, Deci & Ryan). Kalos te laisse choisir, te fait progresser par paliers (XP), et relie tout à ta vision (kalokagathia).<br><br>
        <b>4. La régularité prime sur la perfection.</b> Une habitude met ~66 jours en moyenne à s'ancrer, avec de la souplesse (Lally et al., 2010).
    </div></div>
    <p class="muted" style="text-align:center;font-size:11px;margin:4px 0 0">Kalos ${APP_VERSION}</p>`;
   const hb=$("#howBtn");if(hb)hb.onclick=()=>{const x=$("#howBox");x.style.display=x.style.display==="none"?"block":"none";};
   document.querySelectorAll("[data-mood]").forEach(b=>b.onclick=()=>{checkin={date:todayStr(),mood:b.dataset.mood};save("checkin",checkin);toast("Check-in noté ✓");render();});
-  bindQuests();
+  const nd=$("#nextDone");if(nd&&next.key)nd.onclick=()=>{toggleObjective(tds,next.key,true);render();};
+  bindObjAdder();
   bindSleepBanner();
-  if(quests.date!==todayStr()&&S.apiKey&&program.text){const ql=$("#qList");if(ql)ql.innerHTML='<span class="muted">⚔️ Préparation des quêtes du jour…</span>';autoQuests();}
   const wx=$("#wxToggle");if(wx)wx.onclick=()=>{const b=$("#wxBox"),c=$("#wxCaret");const open=b.style.display!=="none";b.style.display=open?"none":"block";if(c)c.textContent=open?"détails ▾":"masquer ▴";};
 }
 
@@ -498,13 +566,9 @@ async function creerMonPlan(){
     const gsys="Tu es Kalos (kalokagathia). À partir du PROFIL, construis un PROGRAMME DE VIE personnalisé et durable, structuré en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations), avec 1 objectif clair + 2 à 4 actions concrètes par pilier, adapté aux disponibilités et aux goûts. Réaliste et progressif. "+SCI;
     r=await callAI({system:gsys,messages:[{role:"user",text:"PROFIL:\n"+profile.text}],modelId:S.power,label:"programme",maxTokens:6000});
     program={text:r.text,updated:Date.now()};save("program",program);
-    set("3/3 · Je prépare tes actions du jour…");
-    const qsys='À partir du PROGRAMME et des disponibilités, propose 3 à 5 QUÊTES concrètes réalisables AUJOURD\'HUI. Réponds UNIQUEMENT par un tableau JSON : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25.';
-    r=await callAI({system:qsys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes",maxTokens:1200});
-    const arr=extractJSON(r.text)||[];
-    quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
-    save("quests",quests);
-    toast("Ton plan est prêt ✓");navTo("accueil");
+    set("3/3 · Je prépare tes objectifs…");
+    try{await genWeekObjectives();}catch(e){}
+    toast("Tes objectifs sont prêts ✓");navTo("accueil");
   }catch(e){toast(e.message);set("");if(btn)btn.disabled=false;}
 }
 const DISCOVERY_SYSTEM=`Tu es Kalos, un coach de vie chaleureux et efficace (inspiré de la kalokagathia).
@@ -521,11 +585,11 @@ OPTIONS: réponse courte 1 | réponse courte 2 | réponse courte 3
 (2 à 4 réponses tapables). Ne mets PAS d'OPTIONS si ça n'apporte rien : une réponse nette vaut mieux qu'une question de plus.
 Quand tu en sais assez, dis-le en une phrase et propose OPTIONS: Générer mon profil | Continuer.
 MODIFIER LES SECTIONS : quand la personne demande un changement concret, confirme en une phrase PUIS ajoute tout à la fin UNE ligne au format EXACT « ACTION: TYPE | description claire et complète de la demande », avec TYPE parmi :
-- PLANNING (planning de la semaine : déplacer, ajouter, réduire, « fais ma semaine », « pas le temps mardi »...)
+- PLANNING (les OBJECTIFS de la semaine et du jour : déplacer d'un jour à l'autre, ajouter, réduire, « fais ma semaine », « pas le temps mardi », « change mes objectifs »...)
 - SALLE (programme d'entraînement : exercices, séances, échauffements, objectifs sportifs...)
 - PROGRAMME (programme de vie, les 6 piliers)
 - NUTRITION (conseils repas, courses, régime)
-- QUETES (quêtes du jour)
+JAMAIS D'HORAIRES : Kalos ne fixe plus d'heures. Les objectifs se cochent quand la personne veut. Ne propose pas de créneaux, ne parle pas de retard.
 Une seule ligne ACTION par message, et UNIQUEMENT pour une vraie demande de modification (jamais pour une simple question).
 L'app APPLIQUE l'ACTION automatiquement (la personne peut annuler d'un tap). Donc AGIS tout de suite : émets la ligne ACTION dès qu'on te demande un changement, sans reposer de question, et annonce en une phrase ce que tu fais (« ok, je décale ta salle à 9 h »).
 Reste simple, concret, jamais culpabilisant. Si une photo est jointe, tiens-en compte.`;
@@ -555,28 +619,29 @@ function coachContext(){
   }
   const ts=trackingSummary();
   if(ts)c+="\n\n=== SECTION SUIVI (mesures récentes) ===\n"+ts;
-  if(quests.date===todayStr()&&quests.items.length)c+="\n\n=== QUÊTES DU JOUR ===\n"+quests.items.map(q=>(q.done?"[fait] ":"[à faire] ")+q.text).join("\n");
+  try{const oj=dayItemsToday();const dl=planlog[todayStr()]||{};
+    if(oj.length)c+="\n\n=== OBJECTIFS DU JOUR (liste unique, sans horaires) ===\n"+oj.map(it=>(dl[itemKey(it)]===true?"[fait] ":"[à faire] ")+(it.titre||"")+" ("+(it.pilier||"esprit")+", +"+itemXp(it)+" XP)").join("\n");
+  }catch(e){}
   return c;
 }
 let pendingImgs=[];
 /* — ACTION du coach en attente de confirmation (carte inline dans le chat) — */
 let pendingAction=null;
-const ACT_LBL={PLANNING:"📅 Planning",SALLE:"🏋️ Salle",PROGRAMME:"🌿 Programme de vie",NUTRITION:"🥗 Nutrition",QUETES:"⚔️ Quêtes"};
+const ACT_LBL={PLANNING:"🎯 Objectifs",SALLE:"🏋️ Salle",PROGRAMME:"🌿 Programme de vie",NUTRITION:"🥗 Nutrition",QUETES:"🎯 Objectifs"};
 let coachUndo=null; /* dernier changement du coach, annulable */
 function undoCoach(){if(!coachUndo)return;try{(Array.isArray(coachUndo)?coachUndo:[coachUndo]).forEach(u=>localStorage.setItem(K(u.key),JSON.stringify(u.prev)));localStorage.setItem("kalos__chg",String(Date.now()));reloadState();}catch(e){}coachUndo=null;toast("Changement annulé ✓");render();}
 async function runCoachAction(act){
   let note="";
-  const _uk={PLANNING:"planning",SALLE:"salle",PROGRAMME:"program",NUTRITION:"nutrition",QUETES:"quests"}[act.type];
+  if(act.type==="QUETES")act.type="PLANNING"; /* quêtes et planning = la même liste d'objectifs */
+  const _uk={PLANNING:"planning",SALLE:"salle",PROGRAMME:"program",NUTRITION:"nutrition"}[act.type];
   if(_uk){try{coachUndo=[{key:_uk,prev:JSON.parse(JSON.stringify(load(_uk)))}];}catch(e){coachUndo=null;}}
   if(act.type==="PLANNING"){
     if(!planning.data){toast("Génère d'abord un planning (onglet Planning).");return "";}
-    const n=await applyPlanningChange(act.req);note="✓ Planning mis à jour. "+(n||"");
-    try{if(Array.isArray(coachUndo))coachUndo.push({key:"quests",prev:JSON.parse(JSON.stringify(load("quests")))});if(await syncQuestsToPlan())note+=" Quêtes du jour réalignées.";}catch(e){}
+    const n=await applyPlanningChange(act.req);note="✓ Objectifs mis à jour. "+(n||"");
   }
   else if(act.type==="SALLE")note=await applySalleChange(act.req);
   else if(act.type==="PROGRAMME")note=await applyProgramChange(act.req);
   else if(act.type==="NUTRITION")note=await applyNutritionChange(act.req);
-  else if(act.type==="QUETES")note=await applyQuestsChange(act.req);
   return note;
 }
 function rDecouverte(){
@@ -695,15 +760,15 @@ async function maybeSummarizeChat(force){
 function weekData(){
   const days=[];let done=0,tot=0;
   for(let i=6;i>=0;i--){
-    const d=dateAt(-i),ds=dateISO(d),jo=jourObjFor(d);
-    if(jo&&jo.items&&jo.items.length){
-      const dl=planlog[ds]||{};const dd=jo.items.filter(it=>dl[itemKey(it)]).length;
-      done+=dd;tot+=jo.items.length;
-      days.push(ds+" : "+dd+"/"+jo.items.length+" fait");
+    const d=dateAt(-i),ds=dateISO(d),its=dayItemsFor(d);
+    if(its.length){
+      const dl=planlog[ds]||{};const dd=its.filter(it=>dl[itemKey(it)]===true).length;
+      done+=dd;tot+=its.length;
+      days.push(ds+" : "+dd+"/"+its.length+" fait");
     }
   }
   let out="DONNÉES DE LA SEMAINE ÉCOULÉE (7 derniers jours) :";
-  out+="\n- Planning : "+(tot?(done+"/"+tot+" actions faites — "+days.join(" · ")):"pas de planning actif");
+  out+="\n- Objectifs : "+(tot?(done+"/"+tot+" objectifs cochés — "+days.join(" · ")):"aucun objectif actif");
   const week=tracking.filter(t=>t.date>=dateISO(dateAt(-6)));
   const sl=week.filter(t=>t.somMin).map(t=>t.somMin);
   if(sl.length)out+="\n- Sommeil moyen : "+hm(Math.round(sl.reduce((a,b)=>a+b,0)/sl.length))+" sur "+sl.length+" nuit(s)";
@@ -756,13 +821,9 @@ async function coachCreerPlan(){
     const gsys=`Tu es Kalos (kalokagathia). À partir du PROFIL (parfois encore léger), construis un PROGRAMME DE VIE personnalisé et durable, structuré en 6 piliers (## Santé, ## Esprit, ## Culture, ## Art, ## Travail, ## Relations), avec 1 objectif clair + 2 à 4 actions concrètes par pilier, adapté aux dispos et aux goûts connus. Réaliste et progressif ; commence simple si l'info manque. `+SCI;
     r=await callAI({system:gsys,messages:[{role:"user",text:"PROFIL:\n"+profile.text}],modelId:S.power,label:"programme",maxTokens:6000});
     program={text:r.text,updated:Date.now()};save("program",program);
-    set("3/3 · Je prépare tes actions du jour…");
-    const qsys='À partir du PROGRAMME, propose 3 à 5 QUÊTES concrètes réalisables AUJOURD\'HUI. Réponds UNIQUEMENT par un tableau JSON : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25.';
-    r=await callAI({system:qsys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes",maxTokens:1200});
-    const arr=extractJSON(r.text)||[];
-    quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
-    save("quests",quests);
-    toast("Ton plan est prêt ✓");navTo("accueil");
+    set("3/3 · Je prépare tes objectifs…");
+    try{await genWeekObjectives();}catch(e){}
+    toast("Tes objectifs sont prêts ✓");navTo("accueil");
   }catch(e){toast(e.message);set("");if(btn)btn.disabled=false;}
 }
 
@@ -1078,41 +1139,15 @@ ${SCI}`;
   }catch(e){toast(e.message);}finally{if(btn){btn.disabled=false;btn.textContent="✨ Générer / régénérer";}}
 }
 
-function rQuetes(){
-  const fresh=quests.date===todayStr();
-  $("#main").innerHTML=`${progresTabs("quetes")}<h1 class="page">⚔️ Quêtes du jour</h1><p class="sub">Chaque quête validée rapporte de l'XP.</p>${keyBanner()}
-   <div class="card"><button class="btn" id="genQ">🎲 ${fresh?"Régénérer":"Générer"} les quêtes</button><span class="muted" style="margin-left:10px">${quests.date?("Quêtes du "+quests.date):""}</span>
-     <div id="qList" style="margin-top:16px">${renderQuests()}</div></div>`;
-  $("#genQ").onclick=genQuests;bindQuests();
-  if(!fresh&&S.apiKey&&program.text){const ql=$("#qList");if(ql)ql.innerHTML='<span class="muted">⚔️ Préparation des quêtes du jour…</span>';autoQuests();}
-}
-function renderQuests(){if(!quests.items.length)return '<span class="muted">Génère tes quêtes depuis ton programme.</span>';
-  return quests.items.map((q,i)=>{const p=PILLARS[q.pillar]||{label:q.pillar,color:"var(--grey)"};return `<div class="quest ${q.done?"done":""}"><input type="checkbox" data-i="${i}" ${q.done?"checked":""}><div><div>${esc(q.text)}</div><span class="pill" style="background:${p.color}">${p.label}</span></div><div class="q-x">+${q.xp} XP</div></div>`;}).join("");}
-function bindQuests(){document.querySelectorAll('#qList input[type=checkbox]').forEach(cb=>cb.onchange=()=>{const i=+cb.dataset.i,q=quests.items[i];if(cb.checked&&!q.done){q.done=true;addXp(q.pillar,q.xp);toast("+"+q.xp+" XP "+(PILLARS[q.pillar]?.label||""));}else if(!cb.checked&&q.done){q.done=false;addXp(q.pillar,-q.xp);}save("quests",quests);$("#qList").innerHTML=renderQuests();bindQuests();});}
-let _autoQBusy=false;
-async function autoQuests(){
-  if(_autoQBusy||quests.date===todayStr()||!S.apiKey||!program.text)return;
-  _autoQBusy=true;try{await genQuests();}finally{_autoQBusy=false;}
-}
-async function genQuests(){
-  if(!S.apiKey)return toast("Ajoute une clé API.");if(!program.text)return toast("Génère d'abord ton programme.");
-  const btn=$("#genQ");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
-  try{const sys=`À partir du PROGRAMME, propose 5 à 7 QUÊTES concrètes réalisables AUJOURD'HUI, sur plusieurs piliers. Réponds UNIQUEMENT par un tableau JSON valide : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25. pillar exactement l'une des 6 valeurs en minuscules.`;
-    const r=await callAI({system:sys,messages:[{role:"user",text:"PROGRAMME:\n"+program.text}],modelId:S.cheap,label:"quêtes"});
-    const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)throw new Error("Réponse non exploitable, réessaie.");
-    quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
-    save("quests",quests);toast("Quêtes générées ✓");
-  }catch(e){toast(e.message);}finally{render();}
-}
 function extractJSON(t){try{return JSON.parse(t);}catch(e){}const a=t.indexOf("["),b=t.lastIndexOf("]");if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1));}catch(e){}}return null;}
 
 function rProgression(){
   if(coffre.lastMonth!==monthStr()){coffre.balance+=S.monthly;coffre.lastMonth=monthStr();save("coffre",coffre);}
   const{lvl,into,need}=levelInfo();const max=Math.max(100,...Object.values(progress.pillars));
-  const todayQ=quests.date===todayStr()?quests.items:[];const doneQ=todayQ.filter(q=>q.done).length;
+  const todayObj=dayItemsToday();const doneObj=itemStates(todayObj,todayStr()).filter(s=>s==="done").length;
   $("#main").innerHTML=`${progresTabs("progression")}
    <div class="card"><div class="stat"><div class="box"><b>${lvl}</b><span>Niveau</span></div><div class="box"><b>${progress.xp}</b><span>XP total</span></div><div class="box"><b>${into}/${need}</b><span>vers niveau ${lvl+1}</span></div></div>
-   <button class="ghost sm" data-nav="quetes" style="margin-top:12px">⚔️ Quêtes du jour ${todayQ.length?`(${doneQ}/${todayQ.length})`:""}</button></div>
+   <button class="ghost sm" data-nav="accueil" style="margin-top:12px">⚔️ Objectifs du jour ${todayObj.length?`(${doneObj}/${todayObj.length})`:""}</button></div>
    <div class="card"><h2>Les 6 piliers</h2>${Object.keys(PILLARS).map(k=>{const v=progress.pillars[k],p=PILLARS[k];return `<div class="pbar"><div class="top"><span>${p.label}</span><span class="muted">${v} XP</span></div><div class="track"><i style="width:${Math.round(v/max*100)}%;background:${p.color}"></i></div></div>`;}).join("")}</div>
    <div class="card"><h2>🪙 Coffre — récompenses</h2>
      <div class="stat"><div class="box"><b>${coffre.balance.toFixed(2)} €</b><span>Solde</span></div><div class="box"><b>${S.monthly} €</b><span>Versement mensuel</span></div></div>
@@ -1256,20 +1291,21 @@ let planDay=0; /* décalage en jours par rapport à aujourd'hui (négatif = pass
 function rCalendrier(){
   const p=planning.data;
   const d=dateAt(planDay),dateS=dateISO(d);
-  const jo=p?jourObjFor(d):null;
+  const items=p?dayItemsFor(d):[];
+  const nDone=itemStates(items,dateS).filter(s=>s==="done").length;
   const lab=planDay===0?"Aujourd'hui":(planDay===-1?"Hier":(planDay===1?"Demain":JOURS_FR[d.getDay()]));
   const sub=(Math.abs(planDay)<=1)?d.toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"}):d.toLocaleDateString("fr-FR",{day:"numeric",month:"long"});
   const rec=(p&&p.recettes)||[];
-  $("#main").innerHTML=`<h1 class="page">📅 Planning</h1>${keyBanner()}
+  $("#main").innerHTML=`<h1 class="page">📅 Ma semaine</h1>${keyBanner()}
    ${p?`<div class="daynav">
       <button class="ghost sm" id="dPrev" title="Jour précédent">‹</button>
-      <div class="dlab"><b>${esc(lab)}</b><span class="muted" style="font-size:12.5px"> · ${esc(sub)}${planDay===0?` · <span id="nowClock">${nowHM()}</span>`:""}</span></div>
+      <div class="dlab"><b>${esc(lab)}</b><span class="muted" style="font-size:12.5px"> · ${esc(sub)}${items.length?" · "+nDone+"/"+items.length:""}</span></div>
       ${planDay!==0?`<button class="ghost sm" id="dToday">Auj.</button>`:""}
       <button class="ghost sm" id="dNext" title="Jour suivant">›</button>
     </div>
-    <div class="card">${renderDayItems(dateS,(jo&&jo.items)||[],false)}</div>`
-   :`<div class="card"><button class="btn" id="genPlan" style="width:100%">✨ Générer ma semaine</button><p class="muted" style="margin:10px 0 0;font-size:13px;text-align:center">Jour par jour, à partir de ton programme.</p></div>`}
-   ${p?`<div class="card"><h2>🔧 Imprévu ?</h2><textarea id="planEvent" placeholder="ex. genou douloureux, déplacement mardi, plus de temps ce week-end…"></textarea><div style="margin-top:10px"><button class="btn" id="adaptPlan">🔄 Adapter mon planning</button></div>${planning.note?`<div class="formatted" style="margin-top:12px;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px"><b>Dernier ajustement :</b> ${esc(planning.note)}</div>`:""}</div>
+    <div class="card">${renderDayItems(dateS,items,false)}${objAdder(dateS)}</div>`
+   :`<div class="card"><button class="btn" id="genPlan" style="width:100%">✨ Générer mes objectifs de la semaine</button><p class="muted" style="margin:10px 0 0;font-size:13px;text-align:center">Jour par jour, à partir de ton programme. Aucune heure imposée.</p></div>`}
+   ${p?`<div class="card"><h2>🔧 Imprévu ?</h2><textarea id="planEvent" placeholder="ex. genou douloureux, déplacement mardi, plus de temps ce week-end…"></textarea><div style="margin-top:10px"><button class="btn" id="adaptPlan">🔄 Adapter mes objectifs</button></div>${planning.note?`<div class="formatted" style="margin-top:12px;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px"><b>Dernier ajustement :</b> ${esc(planning.note)}</div>`:""}</div>
    ${rec.length?`<div class="card"><h2>🍽️ Recettes</h2>${rec.map((r,ri)=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;align-items:center;gap:10px"><span style="flex:1">${esc(r.nom||"")}</span><button class="ghost sm" data-info="r${ri}">ℹ️ Recette</button></div>
         <div id="infor${ri}" class="formatted" style="display:none;background:var(--accent-l);border-radius:10px;padding:10px;font-size:13px">${(r.ingredients&&r.ingredients.length)?("<b>Ingrédients :</b> "+esc(r.ingredients.join(", "))+"<br>"):""}${(r.etapes&&r.etapes.length)?("<b>Préparation :</b> "+esc(r.etapes.join(" "))+"<br>"):""}${r.pourquoi?("<b>Pourquoi :</b> "+esc(r.pourquoi)):""}</div>
@@ -1280,6 +1316,7 @@ function rCalendrier(){
   const pv=$("#dPrev");if(pv)pv.onclick=()=>{planDay--;render();};
   const nx=$("#dNext");if(nx)nx.onclick=()=>{planDay++;render();};
   const td=$("#dToday");if(td)td.onclick=()=>{planDay=0;render();};
+  bindObjAdder();
   bindPlanInfos();
 }
 function bindPlanInfos(){document.querySelectorAll('[data-info]').forEach(b=>b.onclick=()=>{const d=$("#info"+b.dataset.info);if(d)d.style.display=(d.style.display==="none"?"block":"none");});}
@@ -1287,31 +1324,40 @@ async function genPlanning(){
   if(!S.apiKey)return toast("Ajoute une clé API.");
   if(!program.text)return toast("Génère d'abord ton programme.");
   const btn=$("#genPlan");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Génération...';}
-  try{
-    const sys=`Tu es Kalos. À partir du PROFIL, du PROGRAMME, de la NUTRITION et de la SALLE, crée un PLANNING HEBDOMADAIRE réaliste, jour par jour (Lundi à Dimanche), avec des HORAIRES adaptés à une vie d'entrepreneur plutôt sédentaire. Chaque action a un "pourquoi" (le bénéfice) et un "comment" (consigne concrète). Ajoute 4 à 6 recettes simples, corses/méditerranéennes, dans le budget.
+  try{await genWeekObjectives();toast("Objectifs générés ✓");}catch(e){toast(e.message);}finally{render();}
+}
+async function genWeekObjectives(){
+  {
+    const sys=`Tu es Kalos. À partir du PROFIL, du PROGRAMME, de la NUTRITION et de la SALLE, crée une LISTE D'OBJECTIFS jour par jour (Lundi à Dimanche) pour une vie d'entrepreneur plutôt sédentaire.
+RÈGLE ABSOLUE : PAS d'horaires. On ne fixe JAMAIS d'heure — la personne coche ses objectifs quand elle veut dans la journée. Chaque objectif est une action concrète, courte, vérifiable ("30 min de nage", "20 tractions assistées"), jamais un créneau.
+Chaque objectif a : un "moment" indicatif (matin | midi | aprem | soir), un "pilier", un "xp" (5 à 25 selon l'effort réel), un "pourquoi" (le bénéfice) et un "comment" (consigne concrète). Ajoute 4 recettes simples, corses/méditerranéennes, dans le budget.
 Réponds UNIQUEMENT par un JSON valide, sans aucun texte autour :
-{"jours":[{"jour":"Lundi","items":[{"h":"07:00","titre":"...","pilier":"sante|esprit|culture|art|travail|relations","pourquoi":"...","comment":"..."}]}],"recettes":[{"nom":"...","ingredients":["..."],"etapes":["..."],"pourquoi":"..."}]}
-Limite-toi à 4 items essentiels par jour et à 4 recettes. Les champs "pourquoi" et "comment" : très courts (max 8 mots chacun). `+SCI;
+{"jours":[{"jour":"Lundi","items":[{"titre":"...","moment":"matin","pilier":"sante|esprit|culture|art|travail|relations","xp":10,"pourquoi":"...","comment":"..."}]}],"recettes":[{"nom":"...","ingredients":["..."],"etapes":["..."],"pourquoi":"..."}]}
+Limite-toi à 4 ou 5 objectifs essentiels par jour et à 4 recettes. Les champs "pourquoi" et "comment" : très courts (max 8 mots chacun). `+SCI;
     const ctx="PROFIL:\n"+(profile.text||"-")+"\n\nPROGRAMME:\n"+(program.text||"-")+(nutrition.advice?("\n\nNUTRITION:\n"+nutrition.advice):"")+(salle.analysis?("\n\nSALLE:\n"+salle.analysis):"");
     const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"planning",maxTokens:6000});
     const data=extractJSONobj(r.text);
     if(!data||!data.jours)throw new Error("Réponse non exploitable, réessaie.");
-    planning={data,updated:Date.now()};save("planning",planning);toast("Planning généré ✓");
-  }catch(e){toast(e.message);}finally{render();}
+    planning={data,updated:Date.now(),note:"",extra:(planning.extra||{})};save("planning",planning);
+    try{migratePlan();}catch(e){}
+    return true;
+  }
 }
 async function applyPlanningChange(ev){
   if(!planning.data)throw new Error("Pas de planning à modifier.");
-  const sys=`Tu adaptes un PLANNING HEBDOMADAIRE existant suite à une DEMANDE ou un IMPRÉVU. Réorganise jours et horaires en conséquence (déplacer, ajouter, réduire, maladie, blessure, déplacement, fatigue, plus/moins de temps...). Ajuste l'intensité et les OBJECTIFS si besoin (alternative sûre — surtout dos, genoux, asthme).
+  const sys=`Tu adaptes une LISTE D'OBJECTIFS HEBDOMADAIRE existante suite à une DEMANDE ou un IMPRÉVU (déplacer d'un jour à l'autre, ajouter, réduire, maladie, blessure, déplacement, fatigue, plus/moins de temps...). Ajuste l'intensité et les objectifs si besoin (alternative sûre — surtout dos, genoux, asthme).
+RÈGLE ABSOLUE : PAS d'horaires, jamais d'heure. Chaque objectif est une action concrète et vérifiable, cochée quand la personne veut. Le champ "moment" (matin | midi | aprem | soir) est seulement indicatif.
 Réponds UNIQUEMENT par un JSON valide, sans texte autour :
-{"note":"résumé court des changements + impact objectifs","jours":[{"jour":"Lundi","items":[{"h":"07:00","titre":"...","pilier":"sante|esprit|culture|art|travail|relations","pourquoi":"max 8 mots","comment":"max 8 mots"}]}]}
-Maximum 4 items par jour. N'inclus PAS de recettes. `+SCI;
-  const slim={jours:(planning.data.jours||[]).map(j=>({jour:j.jour,items:(j.items||[]).map(it=>({h:it.h,titre:it.titre,pilier:it.pilier}))}))};
+{"note":"résumé court des changements + impact objectifs","jours":[{"jour":"Lundi","items":[{"titre":"...","moment":"matin","pilier":"sante|esprit|culture|art|travail|relations","xp":10,"pourquoi":"max 8 mots","comment":"max 8 mots"}]}]}
+Maximum 5 objectifs par jour, xp entre 5 et 25. N'inclus PAS de recettes. `+SCI;
+  const slim={jours:(planning.data.jours||[]).map(j=>({jour:j.jour,items:(j.items||[]).map(it=>({titre:it.titre,moment:momentOf(it),pilier:it.pilier,xp:itemXp(it)}))}))};
   const ctx="PROFIL (contraintes) :\n"+String(profile.text||"-").slice(0,1200)+"\n\nPLANNING ACTUEL (allégé) :\n"+JSON.stringify(slim)+"\n\nDEMANDE :\n"+ev;
   const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"adapter planning"});
   const data=extractJSONobj(r.text);
   if(!data||!data.jours)throw new Error("Réponse non exploitable, réessaie.");
-  planning={data:{jours:data.jours,recettes:(planning.data.recettes||[])},updated:Date.now(),note:data.note||""};
+  planning={data:{jours:data.jours,recettes:(planning.data.recettes||[])},updated:Date.now(),note:data.note||"",extra:(planning.extra||{})};
   save("planning",planning);
+  try{migratePlan();}catch(e){}
   return planning.note;
 }
 /* ===== Actions du Coach sur les autres sections ===== */
@@ -1336,27 +1382,9 @@ async function applyNutritionChange(req){
   nutrition.advice=r.text;nutrition.updated=Date.now();save("nutrition",nutrition);
   return "✓ Conseils nutrition mis à jour — va voir l'onglet Nutrition.";
 }
-async function applyQuestsChange(req){
-  const sys='Tu mets à jour les QUÊTES du jour selon la DEMANDE et le PROGRAMME. Réponds UNIQUEMENT par un tableau JSON valide : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. 3 à 7 quêtes, xp entre 5 et 25, pillar exactement l\'une des 6 valeurs en minuscules.';
-  const ctx="PROGRAMME:\n"+String(program.text||"-").slice(0,2500)+"\n\nQUÊTES ACTUELLES:\n"+(quests.date===todayStr()&&quests.items.length?quests.items.map(q=>(q.done?"[fait] ":"")+q.text).join("\n"):"(aucune)")+"\n\nDEMANDE:\n"+req;
-  const r=await callAI({system:sys,messages:[{role:"user",text:ctx}],modelId:S.cheap,label:"quêtes (coach)"});
-  const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)throw new Error("Réponse non exploitable, réessaie.");
-  quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
-  save("quests",quests);
-  return "✓ Quêtes du jour mises à jour — va voir l'Accueil.";
-}
-async function syncQuestsToPlan(){
-  const jo=todayJourObj();if(!jo||!jo.items||!jo.items.length)return false;
-  const items=jo.items.map(it=>(it.h||"")+" "+(it.titre||"")+" ["+(it.pilier||"esprit")+"]").join("\n");
-  const sys='Transforme le PLANNING D\'AUJOURD\'HUI en 3 à 6 QUÊTES concrètes et motivantes (une par action clé, garde l\'horaire dans le texte). Réponds UNIQUEMENT par un tableau JSON : [{"text":"...","pillar":"sante|esprit|culture|art|travail|relations","xp":10}]. xp entre 5 et 25, pillar = celui de l\'action.';
-  const r=await callAI({system:sys,messages:[{role:"user",text:items}],modelId:S.cheap,label:"quêtes (sync plan)",maxTokens:1200});
-  const arr=extractJSON(r.text);if(!Array.isArray(arr)||!arr.length)return false;
-  quests={date:todayStr(),items:arr.map(q=>({text:String(q.text||"").trim(),pillar:(PILLARS[q.pillar]?q.pillar:"esprit"),xp:Math.max(5,Math.min(25,+q.xp||10)),done:false}))};
-  save("quests",quests);return true;
-}
 async function adaptPlanning(){
   if(!S.apiKey)return toast("Ajoute une clé API.");
-  if(!planning.data)return toast("Génère d'abord un planning.");
+  if(!planning.data)return toast("Génère d'abord tes objectifs.");
   const ev=($("#planEvent").value||"").trim();
   if(!ev)return toast("Décris ton imprévu d'abord.");
   const btn=$("#adaptPlan");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Adaptation...';}
@@ -1398,7 +1426,8 @@ function rReglages(){
 document.addEventListener("click",e=>{const d=e.target.closest("[data-del]");if(d){const i=+d.dataset.del;tracking.splice(i,1);save("tracking",tracking);render();}});
 document.addEventListener("click",e=>{const n=e.target.closest("[data-nav]");if(n){navTo(n.dataset.nav);}});
 document.addEventListener("click",e=>{const d=e.target.closest("[data-delmeal]");if(d){const i=+d.dataset.delmeal;if(nutrition.meals){nutrition.meals.splice(i,1);save("nutrition",nutrition);render();}}});
-document.addEventListener("change",e=>{const c=e.target.closest("[data-plandone]");if(c){const s=c.getAttribute("data-plandone"),i=s.indexOf("~");if(i>0){setPlanDone(s.slice(0,i),decodeURIComponent(s.slice(i+1)),c.checked);render();}}});
+document.addEventListener("change",e=>{const c=e.target.closest("[data-plandone]");if(c){const s=c.getAttribute("data-plandone"),i=s.indexOf("~");if(i>0){toggleObjective(s.slice(0,i),decodeURIComponent(s.slice(i+1)),c.checked);render();}}});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-pmove]");if(b){const s=b.getAttribute("data-pmove"),i=s.indexOf("~");if(i>0){moveToTomorrow(s.slice(0,i),decodeURIComponent(s.slice(i+1)));render();}}});
 document.addEventListener("click",e=>{const b=e.target.closest("[data-pinfo]");if(b){const d=$("#pinfo"+b.dataset.pinfo);if(d)d.style.display=(d.style.display==="none"?"block":"none");}});
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{});});}
 
@@ -1468,7 +1497,6 @@ items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items ma
     if(jo)jo.items=merged;else planning.data.jours.push({jour:jn,items:merged});
     planning.updated=Date.now();planning.note=data.note||"";
     save("planning",planning);
-    try{await syncQuestsToPlan();}catch(e){}
     momentMsgs.push({role:"assistant",text:"✓ "+(data.note||"C'est réorganisé.")+"\n\nTon planning et ton Accueil sont à jour."});
     msRender();toast("Journée réorganisée ✓");
     if(typeof render==="function"&&document.getElementById("main"))render();
@@ -1488,10 +1516,10 @@ const SB_KEY="sb_publishable_Ce5qJsMMujnEijotMu0zkw_YpeVDDKN";
 const ALLKEYS=["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"];
 let sb=null; try{ if(window.supabase) sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
 let currentUser=null, cloudTimer=null;
-function reloadState(){S=load("settings");normSettings();profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");coachSt=load("coach");}
+function reloadState(){S=load("settings");normSettings();profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");coachSt=load("coach");try{migratePlan();}catch(e){}}
 function showAuth(msg){const o=$("#authOverlay");if(o){o.style.display="flex";if(msg!==undefined)$("#authMsg").textContent=msg;}}
 function hideAuth(){const o=$("#authOverlay");if(o)o.style.display="none";}
-function startApp(){hideAuth();buildNav();refreshLevel();render();}
+function startApp(){hideAuth();try{migratePlan();}catch(e){}buildNav();refreshLevel();render();}
 function localChg(){return +localStorage.getItem("kalos__chg")||0;}
 function syncedChg(){return +localStorage.getItem("kalos__synced")||0;}
 function migrateChg(){
