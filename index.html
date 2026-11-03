@@ -197,11 +197,18 @@
     <div style="font-size:30px;font-weight:800;color:var(--accent);text-align:center;letter-spacing:1px">KALOS</div>
     <div style="text-align:center;color:var(--grey);font-size:11px;letter-spacing:2px;margin-bottom:16px">καλός · le beau et le bon</div>
     <div id="authMsg" style="font-size:13px;margin-bottom:6px;color:var(--accent-d)"></div>
+    <div id="authLoginWrap">
     <label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="ton@email.com">
     <label>Mot de passe</label><input id="authPass" type="password" autocomplete="current-password" placeholder="6 caractères minimum">
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn" id="authLogin" style="flex:1">Se connecter</button>
       <button class="ghost" id="authSignup" style="flex:1">Créer un compte</button>
+    </div>
+    <button class="ghost sm" id="authForgot" style="margin-top:10px;width:100%;border:none">Mot de passe oublié ?</button>
+    </div>
+    <div id="authNewWrap" style="display:none">
+      <label>Nouveau mot de passe</label><input id="authNew" type="password" autocomplete="new-password" placeholder="6 caractères minimum">
+      <button class="btn" id="authNewBtn" style="width:100%;margin-top:16px">Enregistrer</button>
     </div>
     <p class="muted" style="font-size:11px;margin-top:14px;text-align:center">Tes données te suivent sur tous tes appareils.</p>
   </div>
@@ -210,7 +217,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v49";
+const APP_VERSION="v50";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -998,6 +1005,13 @@ function asstMeals(){
   const j=asst.jour;if(!asstOn()||!j||j.jour!==todayStr())return[];
   return (j.repas||[]).map(r=>({date:j.jour,plat:r.description,kcal:r.kcal,prot:r.proteines,gluc:r.glucides,lip:r.lipides,alims:(r.aliments||[]).map(a=>a.nom+(a.quantite?" "+a.quantite:"")).join(", "),src:"assistant"}));
 }
+/* Le code copié dans l'Assistant contient l'adresse et la clé : on range chaque morceau dans son champ. */
+function lireCodeAsst(t){
+  const u=(String(t).match(/https?:\/\/[^\s"']+/)||[])[0],k=(String(t).match(/kalos_[A-Za-z0-9_-]+/)||[])[0];
+  if(!u||!k)return false;
+  const ui=$("#asstUrlIn"),ki=$("#asstKeyIn");if(ui)ui.value=u;if(ki)ki.value=k;
+  return true;
+}
 async function asstPushTargets(){
   if(!asstOn()||!nutrition.targets)return;
   const T=nutrition.targets;
@@ -1446,12 +1460,18 @@ function rReglages(){
    <div class="card"><h2>🍽️ Assistant quotidien</h2>
      <div class="row"><div><label>Adresse</label><input id="asstUrlIn" value="${esc(S.asstUrl||"")}" placeholder="https://…up.railway.app"></div>
      <div><label>Clé Kalos</label><input id="asstKeyIn" type="password" value="${esc(S.asstKey||"")}" placeholder="kalos_…"></div></div>
-     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="ghost" id="saveAsst">🔗 Relier</button><button class="ghost sm" id="whyAsst">ℹ️</button></div>
-     <div id="whyAsstBox" class="muted" style="display:none;margin-top:8px;font-size:13px">Les repas que tu notes dans l'Assistant (photo ou texte) s'ajoutent à ta journée ici, et tes objectifs calculés par Kalos partent vers l'Assistant. Rien à saisir deux fois. Adresse et clé : dans l'Assistant, onglet Bouffe › Objectifs › « Copier l'adresse » et « Copier la clé Kalos ».</div></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" id="pasteAsst">📋 Coller depuis l'Assistant</button><button class="ghost" id="saveAsst">🔗 Relier</button><button class="ghost sm" id="whyAsst">ℹ️</button></div>
+     <div id="whyAsstBox" class="muted" style="display:none;margin-top:8px;font-size:13px">Les repas que tu notes dans l'Assistant (photo ou texte) s'ajoutent à ta journée ici, et tes objectifs calculés par Kalos partent vers l'Assistant. Rien à saisir deux fois. Dans l'Assistant : onglet Bouffe › Objectifs › « Copier pour Kalos », puis ici « Coller depuis l'Assistant ».</div></div>
    <div class="card"><h2>Obtenir une clé</h2><p class="muted">Gemini : <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> · OpenAI : <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a> · Claude : <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></p><p class="muted">Astuce coût : « éco » sur Gemini Flash-Lite pour le quotidien, « puissant » réservé au programme et à l'analyse.</p></div>
    <div class="card"><h2>Données — transférer entre appareils</h2><p class="muted" style="margin:-6px 0 10px">Exporte depuis un appareil (ex. ton téléphone), puis importe le fichier sur l'autre (ex. ton PC) pour retrouver tout ton contenu.</p><button class="ghost sm" id="exportData">⬇︎ Exporter (JSON)</button> <button class="ghost sm" id="importData">⬆︎ Importer (JSON)</button> <button class="ghost sm" data-nav="couts">💸 Coûts IA</button> <button class="ghost sm" id="logoutBtn">🚪 Se déconnecter</button> <button class="ghost sm" id="wipe" style="color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button></div>`;
   $("#whyAsst").onclick=()=>{const x=$("#whyAsstBox");x.style.display=x.style.display==="none"?"block":"none";};
+  $("#pasteAsst").onclick=async()=>{
+    let t="";try{t=await navigator.clipboard.readText();}catch(e){}
+    if(!lireCodeAsst(t))return toast("Copie d'abord le code dans l'Assistant (Bouffe › Objectifs › « Copier pour Kalos »).");
+    $("#saveAsst").click();
+  };
   $("#saveAsst").onclick=async()=>{
+    lireCodeAsst($("#asstUrlIn").value+" "+$("#asstKeyIn").value);
     S.asstUrl=$("#asstUrlIn").value.trim();S.asstKey=$("#asstKeyIn").value.trim();save("settings",S);asst={jour:null,at:0,err:""};
     if(!asstOn())return toast("Lien retiré.");
     if(!/^(https:\/\/|http:\/\/localhost)/.test(S.asstUrl))return toast("L'adresse doit commencer par https://");
@@ -1562,6 +1582,7 @@ items = uniquement les activités À VENIR à partir de `+now+`. 3 à 5 items ma
 const SB_URL="https://vwxwagotympjzoztjltv.supabase.co";
 const SB_KEY="sb_publishable_Ce5qJsMMujnEijotMu0zkw_YpeVDDKN";
 const ALLKEYS=["settings","profile","program","salle","nutrition","planning","planlog","checkin","quests","progress","coffre","tracking","costs","chat","coach"];
+const RECOVERY=/type=recovery/.test(location.hash); /* arrivée par le lien « mot de passe oublié » */
 let sb=null; try{ if(window.supabase) sb=window.supabase.createClient(SB_URL,SB_KEY); }catch(e){ sb=null; }
 let currentUser=null, cloudTimer=null;
 function reloadState(){S=load("settings");normSettings();profile=load("profile");program=load("program");salle=load("salle");nutrition=load("nutrition");planning=load("planning");planlog=load("planlog");checkin=load("checkin");quests=load("quests");progress=load("progress");coffre=load("coffre");tracking=load("tracking");costs=load("costs");chat=load("chat");coachSt=load("coach");try{migratePlan();}catch(e){}}
@@ -1610,13 +1631,36 @@ async function afterLogin(session){
 }
 async function doLogin(){const e=($("#authEmail").value||"").trim(),p=$("#authPass").value||"";if(!e||!p){$("#authMsg").textContent="Email + mot de passe requis.";return;}$("#authMsg").textContent="Connexion…";const{data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){$("#authMsg").textContent="Erreur : "+error.message;return;}afterLogin(data.session);}
 async function doSignup(){const e=($("#authEmail").value||"").trim(),p=$("#authPass").value||"";if(!e||!p){$("#authMsg").textContent="Email + mot de passe requis.";return;}if(p.length<6){$("#authMsg").textContent="Mot de passe : 6 caractères minimum.";return;}$("#authMsg").textContent="Création du compte…";const{data,error}=await sb.auth.signUp({email:e,password:p});if(error){$("#authMsg").textContent="Erreur : "+error.message;return;}if(data.session){afterLogin(data.session);}else{$("#authMsg").textContent="Compte créé ✓ Confirme ton email puis clique « Se connecter ».";}}
+async function doForgot(){
+  const e=($("#authEmail").value||"").trim();
+  if(!e){$("#authMsg").textContent="Écris ton email, puis retouche « Mot de passe oublié ? ».";return;}
+  $("#authMsg").textContent="Envoi…";
+  const{error}=await sb.auth.resetPasswordForEmail(e,{redirectTo:location.origin+location.pathname});
+  $("#authMsg").textContent=error?("Erreur : "+error.message):"Email envoyé ✓ Ouvre le lien reçu (regarde aussi les spams) pour choisir un nouveau mot de passe.";
+}
+function showNewPass(){showAuth("Choisis ton nouveau mot de passe.");$("#authLoginWrap").style.display="none";$("#authNewWrap").style.display="block";}
+async function doNewPass(){
+  const p=$("#authNew").value||"";
+  if(p.length<6){$("#authMsg").textContent="6 caractères minimum.";return;}
+  $("#authMsg").textContent="Enregistrement…";
+  const{error}=await sb.auth.updateUser({password:p});
+  if(error){$("#authMsg").textContent="Erreur : "+error.message;return;}
+  history.replaceState(null,"",location.pathname);
+  $("#authNewWrap").style.display="none";$("#authLoginWrap").style.display="block";
+  const session=(await sb.auth.getSession()).data.session;
+  if(session){toast("Mot de passe changé ✓");afterLogin(session);}else showAuth("Mot de passe changé ✓ Connecte-toi.");
+}
 async function doLogout(){try{await cloudSaveNow();await sb.auth.signOut();}catch(e){}currentUser=null;location.reload();}
 async function boot(){
   loadContext();
   migrateChg();
   if(!sb){ startApp(); return; } /* hors-ligne / Supabase indispo : mode local */
   const lo=$("#authLogin"),su=$("#authSignup");if(lo)lo.onclick=doLogin;if(su)su.onclick=doSignup;
+  $("#authForgot").onclick=doForgot;$("#authNewBtn").onclick=doNewPass;
+  let recovering=RECOVERY;
+  sb.auth.onAuthStateChange(ev=>{if(ev==="PASSWORD_RECOVERY"&&!recovering){recovering=true;showNewPass();}});
   let session=null; try{ session=(await sb.auth.getSession()).data.session; }catch(e){}
+  if(recovering){showNewPass();return;}
   if(session) afterLogin(session); else showAuth("");
 }
 /* ===== Sommeil automatique (détection coucher/réveil) ===== */
