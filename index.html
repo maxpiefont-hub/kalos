@@ -210,7 +210,7 @@
 
 <script>
 /* KALOS — MVP mobile. Données locales. Multi-fournisseurs + images. */
-const APP_VERSION="v48";
+const APP_VERSION="v49";
 const PILLARS={sante:{label:"Santé",color:"var(--sante)"},esprit:{label:"Esprit",color:"var(--esprit)"},culture:{label:"Culture",color:"var(--culture)"},art:{label:"Art",color:"var(--art)"},travail:{label:"Travail",color:"var(--travail)"},relations:{label:"Relations",color:"var(--relations)"}};
 const MODELS={
   google:[{id:"gemini-flash-lite-latest",name:"Gemini Flash-Lite (le moins cher)",in:0.10,out:0.40},{id:"gemini-flash-latest",name:"Gemini Flash (équilibré, vision)",in:0.30,out:2.50}],
@@ -218,7 +218,7 @@ const MODELS={
   anthropic:[{id:"claude-haiku-4-5-20251001",name:"Claude Haiku 4.5 (coaching)",in:1.00,out:5.00},{id:"claude-sonnet-4-6",name:"Claude Sonnet 4.6 (puissant)",in:3.00,out:15.00}],
 };
 const DEFAULTS={
-  settings:{provider:"google",apiKey:"",cheap:"gemini-flash-lite-latest",power:"gemini-flash-latest",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30},
+  settings:{provider:"google",apiKey:"",cheap:"gemini-flash-lite-latest",power:"gemini-flash-latest",boost:"claude-sonnet-4-6",boostKey:"",boostOn:true,aiCap:8,eur:0.92,monthly:30,asstUrl:"",asstKey:""},
   profile:{text:"",updated:null},program:{text:"",updated:null},salle:{input:"",analysis:"",updated:null,sessions:[],log:{}},
   nutrition:{budget:"",prefs:"",allergies:"",region:"Corse",regime:"",advice:"",updated:null,targets:null},
   planning:{data:null,updated:null,extra:{}},planlog:{},
@@ -614,7 +614,7 @@ function coachContext(){
   const tmm=mealsToday();
   if(tmm.length||nutrition.targets){
     const sm=mealsSum(tmm);
-    c+="\n\n=== REPAS D'AUJOURD'HUI (photos analysées, estimations) ===\n"+(tmm.length?tmm.map(m=>"- "+(m.plat||"repas")+" : ~"+(m.kcal||"?")+" kcal, "+(m.prot||"?")+" g prot").join("\n")+"\nTotal du jour : ~"+Math.round(sm.k)+" kcal ("+Math.round(sm.kmin)+"–"+Math.round(sm.kmax)+") · ~"+Math.round(sm.p)+" g prot · "+Math.round(sm.g)+" g gluc · "+Math.round(sm.l)+" g lip":"(aucun repas noté aujourd'hui)");
+    c+="\n\n=== REPAS D'AUJOURD'HUI (photos analysées dans Kalos ou notés dans l'Assistant quotidien, estimations) ===\n"+(tmm.length?tmm.map(m=>"- "+(m.plat||"repas")+" : ~"+(m.kcal||"?")+" kcal, "+(m.prot||"?")+" g prot").join("\n")+"\nTotal du jour : ~"+Math.round(sm.k)+" kcal ("+Math.round(sm.kmin)+"–"+Math.round(sm.kmax)+") · ~"+Math.round(sm.p)+" g prot · "+Math.round(sm.g)+" g gluc · "+Math.round(sm.l)+" g lip":"(aucun repas noté aujourd'hui)");
     if(nutrition.targets)c+="\nOBJECTIFS QUOTIDIENS : "+nutrition.targets.kcal+" kcal · "+nutrition.targets.prot+" g prot · "+nutrition.targets.gluc+" g gluc · "+nutrition.targets.lip+" g lip → dis si c'est comblé et ce qui manque.";
   }
   const ts=trackingSummary();
@@ -684,6 +684,7 @@ async function startDiscovery(){if(!S.apiKey)return toast("Ajoute une clé API (
 async function sendDiscovery(){const inp=$("#chatIn");const t=inp.value.trim();if(!t&&!pendingImgs.length)return;if(!S.apiKey)return toast("Ajoute une clé API (Réglages).");const imgs=pendingImgs.map(i=>i.b64);pendingImgs=[];drawPrev();chat.push({role:"user",text:t||"(photos)",photo:imgs.length>0,nph:imgs.length});save("chat",chat);inp.value="";drawChat();await aiTurn(false,imgs);}
 async function aiTurn(first,imgs){
   const btn=$("#sendBtn");if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';}
+  await asstRefresh();
   try{
     let msgs;
     if(first){msgs=[{role:"user",text:profile.text?"(Reprise de conversation) Salue-moi en une phrase et propose-moi directement quelque chose d'utile pour maintenant, selon l'heure et mon planning. Pas de questions d'entretien.":"Première rencontre : présente-toi en une phrase, pose UNE seule question ouverte (qui je suis, ce que je veux changer), et propose des OPTIONS."}];}
@@ -776,6 +777,7 @@ function weekData(){
   if(en.length)out+="\n- Énergie moyenne : "+(en.reduce((a,b)=>a+b,0)/en.length).toFixed(1)+"/10";
   const meals=(nutrition.meals||[]).filter(m=>m.date>=dateISO(dateAt(-6)));
   const byDay={};meals.forEach(m=>{byDay[m.date]=byDay[m.date]||{k:0,p:0};byDay[m.date].k+=(+m.kcal||0);byDay[m.date].p+=(+m.prot||0);});
+  if(asstOn()&&asst.jour)(asst.jour.semaine||[]).filter(d=>d.repas).forEach(d=>{byDay[d.jour]=byDay[d.jour]||{k:0,p:0};byDay[d.jour].k+=(+d.kcal||0);byDay[d.jour].p+=(+d.proteines||0);});
   const mdays=Object.keys(byDay).sort();
   if(mdays.length){
     out+="\n- Nutrition ("+mdays.length+" jour(s) noté(s)) : "+mdays.map(d=>d.slice(5)+" ~"+Math.round(byDay[d].k)+" kcal / "+Math.round(byDay[d].p)+" g prot").join(" · ");
@@ -977,7 +979,32 @@ Réponds UNIQUEMENT par un JSON valide, sans texte autour :
   }catch(e){toast(e.message);if(b){b.disabled=false;b.textContent="🏋️ Créer mes séances";}}
 }
 let mealPending=null;
-function mealsToday(){return (nutrition.meals||[]).filter(m=>m.date===todayStr());}
+/* ===== Lien avec l'Assistant quotidien : repas notés dans l'Assistant + objectifs partagés ===== */
+let asst={jour:null,at:0,err:""};
+const asstOn=()=>!!(S.asstUrl&&S.asstKey);
+async function asstFetch(path,opt={}){
+  const r=await fetch(String(S.asstUrl).replace(/\/+$/,"")+path,{...opt,cache:"no-store",headers:{"X-Cle-API":S.asstKey,"Content-Type":"application/json"}});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.erreur||("Assistant : erreur "+r.status));
+  return d;
+}
+async function asstRefresh(force){
+  if(!asstOn())return;
+  if(!force&&asst.jour&&asst.jour.jour===todayStr()&&Date.now()-asst.at<60000)return;
+  try{asst.jour=await asstFetch("/api/kalos/jour?jour="+todayStr());asst.at=Date.now();asst.err="";}
+  catch(e){asst.err=e.message||"Assistant injoignable";}
+}
+function asstMeals(){
+  const j=asst.jour;if(!asstOn()||!j||j.jour!==todayStr())return[];
+  return (j.repas||[]).map(r=>({date:j.jour,plat:r.description,kcal:r.kcal,prot:r.proteines,gluc:r.glucides,lip:r.lipides,alims:(r.aliments||[]).map(a=>a.nom+(a.quantite?" "+a.quantite:"")).join(", "),src:"assistant"}));
+}
+async function asstPushTargets(){
+  if(!asstOn()||!nutrition.targets)return;
+  const T=nutrition.targets;
+  try{await asstFetch("/api/kalos/objectifs",{method:"PUT",body:JSON.stringify({kcal:T.kcal,prot:T.prot,gluc:T.gluc,lip:T.lip})});}
+  catch(e){toast("Objectifs non envoyés à l'Assistant : "+e.message);}
+}
+function mealsToday(){return (nutrition.meals||[]).filter(m=>m.date===todayStr()).concat(asstMeals());}
 function mealsSum(tm){return tm.reduce((a,m)=>({k:a.k+(+m.kcal||0),kmin:a.kmin+(+m.kmin||+m.kcal||0),kmax:a.kmax+(+m.kmax||+m.kcal||0),p:a.p+(+m.prot||0),pmin:a.pmin+(+m.pmin||+m.prot||0),pmax:a.pmax+(+m.pmax||+m.prot||0),g:a.g+(+m.gluc||0),l:a.l+(+m.lip||0)}),{k:0,kmin:0,kmax:0,p:0,pmin:0,pmax:0,g:0,l:0});}
 function nutriBar(label,val,vmin,vmax,target,unit){
   const t=+target||0;
@@ -1010,8 +1037,11 @@ function renderMeals(){
       ${T?`<div style="font-size:13px;margin-top:6px;font-weight:600;color:var(--accent-d)">${nutriStatus(s,T)}</div>`:""}
     </div>`;
   }
-  if(!ms.length)return '<span class="muted">Aucun repas analysé pour le moment.</span>';
-  return head+ms.slice(0,15).map((m,i)=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
+  const am=asstMeals();
+  const asstHtml=am.map(m=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:4px"><div style="display:flex;gap:10px;align-items:center"><div style="flex:1"><div>${esc(m.plat||"Repas")}</div><span class="muted" style="font-size:12px">📲 Assistant · ~${esc(String(m.kcal??"?"))} kcal · ${esc(String(Math.round(+m.prot||0)))} g prot.</span></div></div>${m.alims?`<div class="muted" style="font-size:12px">🧺 ${esc(m.alims)}</div>`:""}</div>`).join("");
+  const asstErr=asstOn()&&asst.err?`<div class="muted" style="font-size:12px;margin-bottom:8px">⚠️ Assistant : ${esc(asst.err)}</div>`:"";
+  if(!ms.length&&!am.length)return asstErr+'<span class="muted">Aucun repas analysé pour le moment.</span>';
+  return asstErr+head+asstHtml+ms.slice(0,15).map((m,i)=>`<div class="quest" style="flex-direction:column;align-items:stretch;gap:6px">
     <div style="display:flex;gap:10px;align-items:center">${m.thumb?`<img src="${m.thumb}" style="width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none">`:""}<div style="flex:1"><div>${esc(m.plat||"Repas")}</div><span class="muted" style="font-size:12px">${esc(m.date||"")} · ~${esc(String(m.kcal??"?"))} kcal${(m.kmin&&m.kmax)?` (${esc(String(Math.round(m.kmin)))}–${esc(String(Math.round(m.kmax)))})`:""} · ${esc(String(m.prot??"?"))} g prot.${m.conf?` · fiabilité ${esc(m.conf)}`:""}</span></div><button class="btn sm ghost" data-delmeal="${i}">✕</button></div>
     ${m.alims?`<div class="muted" style="font-size:12px">🧺 ${esc(m.alims)}</div>`:""}
     ${m.comment?`<div class="muted" style="font-size:12px">${esc(m.comment)}</div>`:""}
@@ -1075,6 +1105,7 @@ function rNutrition(){
    <div class="card"><h2>Mes conseils nutrition</h2><div class="formatted" id="nutOut">${nutrition.advice?fmt(nutrition.advice):'<span class="muted">Aucun conseil pour le moment.</span>'}</div>${nutrition.updated?`<p class="muted" style="margin-top:8px">Généré le ${new Date(nutrition.updated).toLocaleString("fr-FR")}</p>`:""}</div>`;
   $("#mealPhoto").onclick=async()=>{const im=await pickImage(700);if(im){mealPending=im;$("#mealPrevWrap").innerHTML=`<div class="imgprev"><img src="${im.dataUrl}"><span>Photo prête</span><button class="ghost sm" id="rmMeal" style="margin-left:auto">✕</button></div>`;$("#rmMeal").onclick=()=>{mealPending=null;$("#mealPrevWrap").innerHTML="";};}};
   $("#analyseMeal").onclick=analyseMeal;
+  if(asstOn())asstRefresh().then(()=>{const ml=$("#mealsList");if(current==="nutrition"&&ml)ml.innerHTML=renderMeals();});
   $("#genNut").onclick=genNutrition;
   const gt=$("#genTargets");if(gt)gt.onclick=genNutritionTargets;
   const wt=$("#whyTargets");if(wt)wt.onclick=()=>{const x=$("#whyTargetsBox");if(x)x.style.display=x.style.display==="none"?"block":"none";};
@@ -1090,7 +1121,7 @@ async function genNutritionTargets(){
     const d=extractJSONobj(r.text);
     if(!d||!d.kcal)throw new Error("Réponse non exploitable, réessaie.");
     nutrition.targets={kcal:Math.round(+d.kcal),prot:Math.round(+d.proteines||0),gluc:Math.round(+d.glucides||0),lip:Math.round(+d.lipides||0),why:String(d.explication||""),updated:Date.now()};
-    save("nutrition",nutrition);toast("Objectifs calculés ✓");render();
+    save("nutrition",nutrition);toast("Objectifs calculés ✓");render();asstPushTargets();
   }catch(e){toast(e.message);if(b){b.disabled=false;b.textContent="🎯 Calculer mes objectifs";}}
 }
 async function genNutrition(){
@@ -1412,8 +1443,25 @@ function rReglages(){
      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;color:var(--ink)"><input type="checkbox" id="boostOnChk" ${S.boostOn?"checked":""} style="width:18px;height:18px"> Activer le boost Claude (réflexion approfondie, coupé si le plafond mensuel est atteint)</label>
      <div class="row"><div style="max-width:220px"><label>Versement mensuel coffre (€)</label><input id="monthIn" type="number" value="${S.monthly}"></div><div style="max-width:220px"><label>Taux $→€</label><input id="eurIn" type="number" step="0.01" value="${S.eur}"></div></div>
      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="saveSet">💾 Enregistrer</button><button class="ghost" id="testKey">🔌 Tester la clé</button></div></div>
+   <div class="card"><h2>🍽️ Assistant quotidien</h2>
+     <div class="row"><div><label>Adresse</label><input id="asstUrlIn" value="${esc(S.asstUrl||"")}" placeholder="https://…up.railway.app"></div>
+     <div><label>Clé Kalos</label><input id="asstKeyIn" type="password" value="${esc(S.asstKey||"")}" placeholder="kalos_…"></div></div>
+     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="ghost" id="saveAsst">🔗 Relier</button><button class="ghost sm" id="whyAsst">ℹ️</button></div>
+     <div id="whyAsstBox" class="muted" style="display:none;margin-top:8px;font-size:13px">Les repas que tu notes dans l'Assistant (photo ou texte) s'ajoutent à ta journée ici, et tes objectifs calculés par Kalos partent vers l'Assistant. Rien à saisir deux fois. Adresse et clé : dans l'Assistant, onglet Bouffe › Objectifs › « Copier l'adresse » et « Copier la clé Kalos ».</div></div>
    <div class="card"><h2>Obtenir une clé</h2><p class="muted">Gemini : <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> · OpenAI : <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a> · Claude : <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></p><p class="muted">Astuce coût : « éco » sur Gemini Flash-Lite pour le quotidien, « puissant » réservé au programme et à l'analyse.</p></div>
    <div class="card"><h2>Données — transférer entre appareils</h2><p class="muted" style="margin:-6px 0 10px">Exporte depuis un appareil (ex. ton téléphone), puis importe le fichier sur l'autre (ex. ton PC) pour retrouver tout ton contenu.</p><button class="ghost sm" id="exportData">⬇︎ Exporter (JSON)</button> <button class="ghost sm" id="importData">⬆︎ Importer (JSON)</button> <button class="ghost sm" data-nav="couts">💸 Coûts IA</button> <button class="ghost sm" id="logoutBtn">🚪 Se déconnecter</button> <button class="ghost sm" id="wipe" style="color:var(--danger);border-color:var(--danger)">🗑 Tout effacer</button></div>`;
+  $("#whyAsst").onclick=()=>{const x=$("#whyAsstBox");x.style.display=x.style.display==="none"?"block":"none";};
+  $("#saveAsst").onclick=async()=>{
+    S.asstUrl=$("#asstUrlIn").value.trim();S.asstKey=$("#asstKeyIn").value.trim();save("settings",S);asst={jour:null,at:0,err:""};
+    if(!asstOn())return toast("Lien retiré.");
+    if(!/^(https:\/\/|http:\/\/localhost)/.test(S.asstUrl))return toast("L'adresse doit commencer par https://");
+    const b=$("#saveAsst");b.disabled=true;b.innerHTML='<span class="spin"></span>';
+    await asstRefresh(true);
+    b.disabled=false;b.textContent="🔗 Relier";
+    if(asst.err)return toast("⚠️ "+asst.err);
+    await asstPushTargets();
+    toast("Assistant relié ✓ "+(asst.jour.repas||[]).length+" repas aujourd'hui");
+  };
   $("#provSel").onchange=e=>{S.provider=e.target.value;S.cheap=MODELS[S.provider][0].id;S.power=MODELS[S.provider][MODELS[S.provider].length-1].id;save("settings",S);render();};
   $("#saveSet").onclick=()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;S.power=$("#powerSel").value;S.monthly=+$("#monthIn").value||0;S.eur=+$("#eurIn").value||0.92;const _bk=$("#boostKeyIn");if(_bk)S.boostKey=_bk.value.trim();const _ac=$("#aiCapIn");if(_ac)S.aiCap=+_ac.value||0;const _bo=$("#boostOnChk");if(_bo)S.boostOn=_bo.checked;save("settings",S);toast("Enregistré ✓");};
   $("#testKey").onclick=async()=>{S.apiKey=$("#keyIn").value.trim();S.cheap=$("#cheapSel").value;save("settings",S);if(!S.apiKey)return toast("Colle une clé.");const b=$("#testKey");b.disabled=true;b.innerHTML='<span class="spin"></span>';try{await callAI({system:"Réponds: OK.",messages:[{role:"user",text:"dis OK"}],modelId:S.cheap,label:"test"});toast("Clé OK ✓");}catch(e){toast(e.message);}finally{b.disabled=false;b.textContent="🔌 Tester la clé";}};

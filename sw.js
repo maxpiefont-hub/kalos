@@ -1,5 +1,5 @@
-/* Kalos service worker — coquille hors-ligne. Les appels IA passent toujours par le réseau. (build v48) */
-const CACHE = "kalos-v48";
+/* Kalos service worker — coquille hors-ligne. Les appels IA passent toujours par le réseau. (build v49) */
+const CACHE = "kalos-v49";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -15,6 +15,8 @@ self.addEventListener("fetch", (e) => {
   // Ne jamais mettre en cache les appels IA
   if (url.includes("googleapis.com") || url.includes("api.openai.com") || url.includes("api.anthropic.com")) return;
   if (e.request.method !== "GET") return;
+  // Autres adresses (Assistant quotidien, Supabase…) : toujours le réseau, jamais le cache.
+  if (new URL(url).origin !== self.location.origin) return;
   // Pages (navigation) : RÉSEAU D'ABORD → toujours la dernière version en ligne ; cache seulement hors-ligne.
   if (e.request.mode === "navigate" || url.endsWith("/index.html")) {
     e.respondWith(
